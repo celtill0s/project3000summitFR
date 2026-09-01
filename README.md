@@ -26,10 +26,15 @@ puis ouvrir <http://localhost:8000>.
   désactivables via le sélecteur de calques en haut à droite), popups
   détaillées par sommet.
 - **`mountains.json`** — les données : nom, altitude, coordonnées, massif,
-  région, cotation de difficulté (échelle CAS/SAC), notes d'accès, source.
+  région, cotation de difficulté (échelle CAS/SAC), notes d'accès, source,
+  `done` (sommet fait ou non — coché depuis l'app puis exporté ici pour
+  persister), et optionnellement `gpx` (chemin vers une trace du dossier
+  `gpx/`).
+- **`gpx/`** — traces GPX versionnées (voir `gpx/README.md` pour comment en
+  ajouter une durablement).
 - **`sources.md`** — méthodologie complète : comment chaque sommet a été
   sélectionné, comment sa cotation a été déterminée, sources utilisées et
-  limites connues.
+  limites connues (inclut l'audit critique du 2026-09-01).
 
 ## Fonctionnalités
 
@@ -44,14 +49,14 @@ puis ouvrir <http://localhost:8000>.
   sauvegardé automatiquement dans le `localStorage` du navigateur (propre
   à cet appareil/navigateur, non partagé).
 - **Export/Import de la progression** : bouton "Exporter" (barre latérale)
-  télécharge un fichier `progress.json` avec la liste des sommets faits.
-  Le bouton "Importer" recharge un `progress.json` précédemment exporté
-  (fusion ou remplacement, au choix). Le `localStorage` seul n'est **pas**
-  garanti de survivre à un nettoyage du navigateur ou à un changement
-  d'appareil : après un export, déplace le fichier téléchargé dans ce
-  dossier (`progress.json` à la racine) puis commite-le sur git — c'est
-  **versionné volontairement** pour servir de sauvegarde durable et
-  partagée entre appareils.
+  télécharge un `mountains.json` à jour, avec le champ `done` de chaque
+  sommet mis à jour selon tes coches. Le bouton "Importer" recharge un
+  fichier ainsi exporté (fusion ou remplacement, au choix). Le
+  `localStorage` seul n'est **pas** garanti de survivre à un nettoyage du
+  navigateur ou à un changement d'appareil : après un export, remplace le
+  `mountains.json` de ce dossier par le fichier téléchargé puis commite-le
+  sur git — c'est la persistance **officielle et partagée entre
+  appareils** ; le `localStorage` reste un filet de sécurité immédiat.
 - **Trace GPX par sommet** : dans la popup d'un sommet, bouton "Importer un
   GPX" pour associer un fichier `.gpx` (export d'une appli comme
   Visorando, Komoot, Openrunner…) à ce sommet. La trace est aussitôt

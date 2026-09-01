@@ -244,7 +244,7 @@
           <div class="chip" id="import-progress">⬆ Importer</div>
           <input type="file" id="import-file-input" accept="application/json" hidden />
         </div>
-        <div style="font-size:11px;color:var(--muted);line-height:1.4;">Sauvegardé automatiquement dans ce navigateur. Exporte régulièrement un fichier <code>progress.json</code>, place-le dans ce dossier et commite-le sur git pour ne pas perdre ta progression si tu vides les données du navigateur.</div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.4;">Sauvegardé automatiquement dans ce navigateur. "Exporter" télécharge un <code>mountains.json</code> à jour (avec tes coches) : remplace le fichier de ce dossier par celui-ci et commite-le sur git pour une sauvegarde durable, partagée entre appareils.</div>
       </div>
     </div>
     <div id="count"></div>
@@ -266,16 +266,17 @@ function saveDone() {
   try { localStorage.setItem(DONE_KEY, JSON.stringify([...doneSet])); } catch (e) {}
 }
 
+// Export/Import opèrent directement sur la forme de mountains.json (un booléen "done" par
+// sommet) plutôt qu'un fichier séparé : le fichier téléchargé est fait pour REMPLACER
+// mountains.json dans le dépôt et être commité — c'est la persistance "officielle",
+// partagée entre appareils. Le localStorage reste un filet de sécurité local/immédiat.
 function exportProgress() {
-  const payload = {
-    done: [...doneSet],
-    exported_at: new Date().toISOString()
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const snapshot = PEAKS.map(p => ({ ...p, done: doneSet.has(p.name) }));
+  const blob = new Blob([JSON.stringify(snapshot, null, 2) + '\n'], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'progress.json';
+  a.download = 'mountains.json';
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -292,8 +293,16 @@ function importProgressFile(file) {
       alert('Fichier invalide (JSON illisible).');
       return;
     }
-    const list = Array.isArray(payload) ? payload : payload.done;
-    if (!Array.isArray(list)) {
+    // Formats acceptés : un mountains.json complet (tableau d'objets sommet avec "done"),
+    // ou l'ancien format simple {done: ["nom", ...]} / un tableau de noms.
+    let doneNames;
+    if (Array.isArray(payload) && payload.length && typeof payload[0] === 'object') {
+      doneNames = payload.filter(p => p.done).map(p => p.name);
+    } else if (Array.isArray(payload)) {
+      doneNames = payload;
+    } else if (Array.isArray(payload.done)) {
+      doneNames = payload.done;
+    } else {
       alert('Fichier invalide : ce n\'est pas un export de progression reconnu.');
       return;
     }
@@ -302,7 +311,7 @@ function importProgressFile(file) {
       `OK = fusionner (garder les deux)\nAnnuler = remplacer par le fichier importé`
     );
     if (!merge) doneSet = new Set();
-    list.forEach(name => doneSet.add(name));
+    doneNames.forEach(name => doneSet.add(name));
     saveDone();
     markers.forEach(({ marker, data }) => {
       marker.setIcon(makeIcon(DIFF_COLORS[data.difficulty] || '#555', doneSet.has(data.name)));
@@ -485,6 +494,7 @@ function elevationProfileSvg(points, width, height) {
 }
 
 const gpxData = new Map(); // name -> { stats, points }
+const gpxRawText = new Map(); // name -> texte GPX brut (importé OU chargé depuis le dépôt), pour le bouton "Télécharger"
 
 function clearGpxForPeak(name) {
   const existing = gpxPolylines.get(name);
@@ -493,6 +503,7 @@ function clearGpxForPeak(name) {
     gpxPolylines.delete(name);
   }
   gpxData.delete(name);
+  gpxRawText.delete(name);
 }
 
 function drawGpxForPeak(p, gpxText) {
@@ -506,7 +517,28 @@ function drawGpxForPeak(p, gpxText) {
   gpxPolylines.set(p.name, lines);
   const stats = computeGpxStats(segments);
   gpxData.set(p.name, stats);
+  gpxRawText.set(p.name, gpxText);
   return lines;
+}
+
+function slugify(name) {
+  return name.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // enlève les accents
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+function downloadGpx(p) {
+  const text = gpxRawText.get(p.name);
+  if (!text) return;
+  const blob = new Blob([text], { type: 'application/gpx+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${slugify(p.name)}.gpx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function importGpxFile(p, file, statusEl) {
@@ -553,8 +585,9 @@ function gpxRowHtml(p) {
   const hasAny = hasImported || gpxPolylines.has(p.name);
   let body = '';
   if (hasAny) {
-    body += `<div class="gpx-status">🧭 Trace ${hasImported ? 'importée' : 'fournie avec le projet'} affichée sur la carte (calque « Traces GPX »).</div>`;
+    body += `<div class="gpx-status">🧭 Trace ${hasImported ? 'importée' : 'fournie avec le projet'} affichée sur la carte (calque « Traces GPX »)${hasImported ? ' — pour la rendre permanente/partagée : télécharge-la, place-la dans gpx/, référence-la via "gpx" dans mountains.json, puis commite (voir gpx/README.md).' : ''}</div>`;
     body += `<button type="button" class="gpx-btn gpx-detail-toggle">📈 Détail GPX</button>`;
+    body += `<button type="button" class="gpx-btn gpx-download">⬇ Télécharger</button>`;
     body += `<button type="button" class="gpx-btn gpx-replace">Remplacer</button>`;
     if (hasImported) body += `<button type="button" class="gpx-btn danger gpx-delete">Supprimer</button>`;
     body += `<div class="gpx-detail-body"></div>`;
@@ -594,11 +627,13 @@ function bindGpxRow(root, p) {
   const importBtn = row.querySelector('.gpx-import');
   const replaceBtn = row.querySelector('.gpx-replace');
   const deleteBtn = row.querySelector('.gpx-delete');
+  const downloadBtn = row.querySelector('.gpx-download');
   const detailToggle = row.querySelector('.gpx-detail-toggle');
   const detailBody = row.querySelector('.gpx-detail-body');
   if (importBtn) importBtn.addEventListener('click', trigger);
   if (replaceBtn) replaceBtn.addEventListener('click', trigger);
   if (deleteBtn) deleteBtn.addEventListener('click', () => deleteImportedGpx(p));
+  if (downloadBtn) downloadBtn.addEventListener('click', () => downloadGpx(p));
   if (detailToggle && detailBody) {
     detailToggle.addEventListener('click', () => {
       const open = detailBody.classList.toggle('open');
@@ -847,6 +882,9 @@ fetch('mountains.json')
   .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
   .then(data => {
     PEAKS = data;
+    // "done" commité dans mountains.json (source partagée/git) fusionné avec le localStorage
+    // (peut contenir des coches plus récentes pas encore ré-exportées/commitées).
+    PEAKS.filter(p => p.done).forEach(p => doneSet.add(p.name));
     buildMarkers();
     renderChipsAll();
     syncMarkers();

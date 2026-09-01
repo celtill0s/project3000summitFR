@@ -91,6 +91,20 @@ ferrata équipée) :
 - **Queyras** : Rochebrune (3320 m, escalade II, cordes fixes) et Rocca
   Bianca (3059 m, PD, escalade I sup./II inf., cordes fixes) — trop
   techniques malgré des comptes-rendus initiaux plus optimistes.
+- **Pyrénées** (retirés lors de l'audit critique du 2026-09-01, voir
+  section 7) :
+  - **Pic du Marboré** (3248 m) — moraine/replat où neige-glace persistent
+    souvent, crampons nécessaires une bonne partie de l'année (même cirque
+    que le Casque du Marboré, déjà exclu).
+  - **Pic Perdiguère** (3222 m) — cheminée cotée niveau II obligatoire
+    après le col supérieur de Litérole.
+  - **Pic du Balaïtous** (3144 m) — escalade finale II+, vire exposée
+    avec 600 m de vide, réputé pour des accidents liés à une
+    sous-estimation de l'engagement.
+  - **Pic de Batoua** (3034 m) — cheminée de 5 m cotée II+ sur la crête
+    Cauarère–Batoua.
+  - **Petit Vignemale** (3032 m) — voie normale dite "des Séracs" :
+    traversée glaciaire + escalade PD+/III, alpinisme et non randonnée.
 
 ## 5. Coordonnées
 
@@ -120,3 +134,52 @@ OpenStreetMap disponibles pour chaque point coté.
 - Toute contribution/correction est bienvenue en éditant `mountains.json`
   (même structure de champs) — merci d'indiquer la source utilisée dans le
   champ `"source"` de la nouvelle entrée.
+
+## 7. Audit critique du 2026-09-01
+
+Suite à une demande explicite de vérification extrêmement critique, chaque
+sommet de la liste a été réexaminé individuellement (recherche croisée
+camptocamp.org quand accessible, sinon altituderando.com/visorando.com/
+bivouak.net/skitour.fr/topopyrenees.com/outside.fr), en cherchant
+spécifiquement des indices d'un terrain plus engagé que la cotation
+affichée (corde/rappel, glacier obligatoire, escalade cotée II ou plus,
+via ferrata).
+
+**Résultat** : sur 43 sommets audités, **5 ont été retirés** (voie normale
+en réalité alpinisme — détail section 4), **6 ont été recotés/reformulés**
+suite à un terrain sous-estimé ou une saisonnalité mal reflétée :
+
+- **Pointe de l'Observatoire** : T2 → T3 (dernier tronçon nécessite les
+  mains).
+- **Pic de la Farnéiréta** : T2 → T3 (cotation officielle "Moyen" — brefs
+  passages aériens, hors-sentier par endroits, sens de l'orientation
+  requis).
+- **Mont Chaberton** : T2 → T3 (cotation officielle "Difficile" — hautes
+  marches et prises de main nécessaires, notamment à la descente du col).
+- **La Grande Fache** : T2 → T3 (passage niveau II sur les derniers
+  350 m).
+- **Pic de Néouvielle** : cotation T3 conservée mais note renforcée sur la
+  fréquence réelle des névés/glace nécessitant crampons+piolet (pas
+  seulement "en début de saison").
+- **Grand Astazou** : cotation T4 conservée pour le sommet lui-même, mais
+  note reformulée pour signaler que l'accès classique au refuge de
+  Tuquerouye passe par un couloir raide (40-45°) souvent engagé —
+  vérifier les conditions/une variante d'accès avant de partir.
+
+Fait notable : 3 des 6 recotages concernent des sommets initialement en
+**T2** ("facile") qui se sont révélés être en réalité des **T3** une fois
+la cotation officielle vérifiée plutôt qu'un résumé de compte-rendu — un
+schéma cohérent qui suggère que les T2 du reste de la liste méritent
+d'être abordés avec un peu de prudence supplémentaire tant qu'ils n'ont
+pas tous été vérifiés individuellement de cette façon.
+
+Les **32 autres sommets ont été confirmés** sans changement. Deux cas
+restent à surveiller (non modifiés, mais signalés par l'audit) :
+- **Pointe d'Aval (Chauvet)** : une route cotée AD- existe dans le même
+  secteur sous un nom proche — bien vérifier qu'on suit l'itinéraire de
+  randonnée d'été classique et non cette variante.
+- Les cotations qui reposent sur des comptes-rendus plutôt que sur une
+  cotation CAS officielle camptocamp (la majorité — camptocamp.org est en
+  grande partie inaccessible aux outils de recherche automatisés,
+  contenu généré en JavaScript) restent, comme indiqué en section 3, des
+  estimations à recouper avant une sortie réelle.

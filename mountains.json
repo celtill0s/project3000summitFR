@@ -8,7 +8,8 @@
     "region": "Alpes",
     "difficulty": "T4",
     "notes": "Un des 3000 les plus hauts d'Europe accessible sans matériel d'alpinisme, arête rocheuse (voie normale évite le glacier).",
-    "source": "hexatrek.com"
+    "source": "hexatrek.com",
+    "done": false
   },
   {
     "name": "Ouille Noire",
@@ -19,7 +20,8 @@
     "region": "Alpes",
     "difficulty": "T3",
     "notes": "Accès relativement facile depuis Val-d'Isère / Bonneval-sur-Arc.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Pointe d'Aval (Chauvet)",
@@ -29,8 +31,9 @@
     "massif": "Ubaye",
     "region": "Alpes",
     "difficulty": "T3",
-    "notes": "Ascension facile en dehors des périodes de chutes de pierres, Saint-Paul-sur-Ubaye.",
-    "source": "altituderando.com"
+    "notes": "Ascension facile en dehors des périodes de chutes de pierres, Saint-Paul-sur-Ubaye ; un ressaut nécessite les mains en fin de course. Attention : bien suivre l'itinéraire de randonnée d'été classique — une variante hivernale/ski (AD-) existe sur un secteur voisin, plus engagée.",
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Grand Glaiza / Punta Merciantaira",
@@ -41,7 +44,8 @@
     "region": "Alpes",
     "difficulty": "T3",
     "notes": "Depuis Aiguilles, à la frontière italienne.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Le Grand Galibier",
@@ -52,7 +56,8 @@
     "region": "Alpes",
     "difficulty": "T4",
     "notes": "Depuis Valloire, quelques passages plus raides/exposés en fin de course, pas d'escalade encordée ni glacier.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Pain de Sucre (Chambeyron)",
@@ -63,7 +68,8 @@
     "region": "Alpes",
     "difficulty": "T4",
     "notes": "Montée raide, arrivée vertigineuse mais sans passage d'escalade encordée.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Mont Thabor",
@@ -74,7 +80,8 @@
     "region": "Alpes",
     "difficulty": "T2",
     "notes": "Itinéraire classique depuis Valfréjus ou Névache, belvédère facile.",
-    "source": "ffrandonnee.fr"
+    "source": "ffrandonnee.fr",
+    "done": false
   },
   {
     "name": "La Mortice (sommet Sud)",
@@ -85,7 +92,8 @@
     "region": "Alpes",
     "difficulty": "T3",
     "notes": "Traversée de crête entre Vars et l'Ubaye.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Vieux Chaillol",
@@ -96,7 +104,8 @@
     "region": "Alpes",
     "difficulty": "T3",
     "notes": "Longue ascension depuis Saint-Michel-de-Chaillol via le Col de Côte Longue.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Signal du Petit Mont Cenis",
@@ -107,7 +116,8 @@
     "region": "Alpes",
     "difficulty": "T2",
     "notes": "Arête sud-ouest depuis Sollières-Sardières.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Tête de la Fréma",
@@ -118,7 +128,8 @@
     "region": "Alpes",
     "difficulty": "T3",
     "notes": "Cirque du Lac des Neuf Couleurs, possibilité de coucher en refuge.",
-    "source": "ffrandonnee.fr"
+    "source": "ffrandonnee.fr",
+    "done": false
   },
   {
     "name": "Tête de Longet",
@@ -129,7 +140,8 @@
     "region": "Alpes",
     "difficulty": "T4",
     "notes": "Se rejoint depuis la Tête de la Cula par une crête hors-sentier, un peu aérienne, sans passage d'escalade ni corde.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Pic de la Farnéiréta",
@@ -138,9 +150,10 @@
     "lon": 6.9332,
     "massif": "Queyras",
     "region": "Alpes",
-    "difficulty": "T2",
-    "notes": "Depuis Saint-Véran, lacs et vestiges pastoraux sur l'itinéraire.",
-    "source": "altituderando.com"
+    "difficulty": "T3",
+    "notes": "Depuis Saint-Véran, lacs et vestiges pastoraux sur l'itinéraire ; section finale moins marquée avec de brefs passages aériens où l'usage des mains est parfois nécessaire, hors-sentier par endroits (bon sens de l'orientation requis).",
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Mont Chaberton",
@@ -149,9 +162,10 @@
     "lon": 6.7514,
     "massif": "Briançonnais",
     "region": "Alpes",
-    "difficulty": "T2",
-    "notes": "Ancien chemin militaire jusqu'au fort sommital, très facile pour l'altitude.",
-    "source": "hexatrek.com"
+    "difficulty": "T3",
+    "notes": "Ancien chemin militaire jusqu'au fort sommital ; cotation officielle « Difficile » (pas facile) — hautes marches et prises de main nécessaires notamment à la descente du col, pente finale soutenue.",
+    "source": "hexatrek.com",
+    "done": false
   },
   {
     "name": "Tête de la Cula",
@@ -162,7 +176,8 @@
     "region": "Alpes",
     "difficulty": "T3",
     "notes": "Depuis le parking des Claux (Ceillac), sentier bien tracé sans passage vertigineux ni technique, mais course longue (~7h30 A/R) demandant une bonne condition physique.",
-    "source": "visorando.com"
+    "source": "visorando.com",
+    "done": false
   },
   {
     "name": "Grand Queyras",
@@ -173,7 +188,8 @@
     "region": "Alpes",
     "difficulty": "T4",
     "notes": "Arête finale sur rocher friable demandant précision et recherche d'itinéraire ; pas de passage d'escalade franc ni de corde nécessaire, mais engagement réel.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Pointe des Cerces",
@@ -184,7 +200,8 @@
     "region": "Alpes",
     "difficulty": "T3",
     "notes": "Depuis les lacs du Grand Ban, Névache.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Mont Buet",
@@ -195,7 +212,8 @@
     "region": "Alpes",
     "difficulty": "T3",
     "notes": "\"Mont-Blanc des dames\", long dôme neigeux/rocheux, classique d'acclimatation sans matériel technique.",
-    "source": "hexatrek.com"
+    "source": "hexatrek.com",
+    "done": false
   },
   {
     "name": "Pointe des Fours",
@@ -206,7 +224,8 @@
     "region": "Alpes",
     "difficulty": "T2",
     "notes": "Ascension courte possible depuis Bonneval-sur-Arc.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Pointe Joanne",
@@ -217,7 +236,8 @@
     "region": "Alpes",
     "difficulty": "T3",
     "notes": "Depuis le Col de Valante puis le Passo della Losetta, bon sentier menant facilement au sommet ; course longue et isolée côté frontière italienne.",
-    "source": "bivouak.net"
+    "source": "bivouak.net",
+    "done": false
   },
   {
     "name": "Mont Pelat",
@@ -228,7 +248,8 @@
     "region": "Alpes",
     "difficulty": "T3",
     "notes": "Point culminant des Alpes-de-Haute-Provence, longue rando depuis Allos.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Pointe d'Escreins",
@@ -239,7 +260,8 @@
     "region": "Alpes",
     "difficulty": "T3",
     "notes": "Itinéraire de crête avec lacs, vallon des Houerts.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Pointe des Sagnes Longues",
@@ -250,7 +272,8 @@
     "region": "Alpes",
     "difficulty": "T3",
     "notes": "Par le vallon de Clausis, aucune difficulté technique mais crête sommitale un peu aérienne, délicate pour les personnes sensibles au vertige.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Mont Ténibre",
@@ -261,7 +284,8 @@
     "region": "Alpes",
     "difficulty": "T3",
     "notes": "Boucle de 2 jours depuis le refuge de Rabuons, non technique mais engagée par la longueur.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Pic de Caramantran",
@@ -272,7 +296,8 @@
     "region": "Alpes",
     "difficulty": "T2",
     "notes": "Depuis le Col Agnel, sentier large et bien tracé, aucune difficulté technique.",
-    "source": "ffrandonnee.fr"
+    "source": "ffrandonnee.fr",
+    "done": false
   },
   {
     "name": "Pic du Mas de la Grave",
@@ -283,7 +308,8 @@
     "region": "Alpes",
     "difficulty": "T3",
     "notes": "Longue ascension depuis Le Chazelet, vue sur la Meije.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Pointe de l'Observatoire",
@@ -292,31 +318,10 @@
     "lon": 6.6851,
     "massif": "Vanoise",
     "region": "Alpes",
-    "difficulty": "T2",
-    "notes": "Sentier balcon au-dessus d'Aussois.",
-    "source": "altituderando.com"
-  },
-  {
-    "name": "Pic du Marboré",
-    "altitude_m": 3248,
-    "lat": 42.6928,
-    "lon": 0.0116,
-    "massif": "Cirque de Gavarnie (frontière)",
-    "region": "Pyrénées",
-    "difficulty": "T4",
-    "notes": "Au-dessus du cirque de Gavarnie, course engagée mais non équipée.",
-    "source": "outside.fr"
-  },
-  {
-    "name": "Pic Perdiguère",
-    "altitude_m": 3222,
-    "lat": 42.6919,
-    "lon": 0.5189,
-    "massif": "Haute-Garonne (frontière)",
-    "region": "Pyrénées",
     "difficulty": "T3",
-    "notes": "Relativement facile et non technique, possibilité en 2 jours via le refuge du Portillon.",
-    "source": "outside.fr"
+    "notes": "Sentier balcon au-dessus d'Aussois ; dernier tronçon depuis le Col d'Aussois nécessite les mains (rochers, recherche d'itinéraire), non technique mais plus qu'un simple sentier.",
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Pic de Campbieil",
@@ -327,7 +332,8 @@
     "region": "Pyrénées",
     "difficulty": "T4",
     "notes": "Arête rocheuse avec un court passage d'escalade facile (~20 m), glissant par temps humide.",
-    "source": "outside.fr"
+    "source": "outside.fr",
+    "done": false
   },
   {
     "name": "Grand Pic de Tapou",
@@ -338,7 +344,8 @@
     "region": "Pyrénées",
     "difficulty": "T4",
     "notes": "Satellite du Vignemale côté Gavarnie.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Le Taillon",
@@ -349,18 +356,8 @@
     "region": "Pyrénées",
     "difficulty": "T3",
     "notes": "L'un des 3000 pyrénéens les plus accessibles, passe par la Brèche de Roland.",
-    "source": "outside.fr"
-  },
-  {
-    "name": "Pic du Balaïtous",
-    "altitude_m": 3144,
-    "lat": 42.8389,
-    "lon": -0.2903,
-    "massif": "Balaïtous (frontière)",
-    "region": "Pyrénées",
-    "difficulty": "T4",
-    "notes": "Itinéraire long et complexe via la Grande Diagonale, traversée exposée mais sans corde obligatoire.",
-    "source": "outside.fr"
+    "source": "outside.fr",
+    "done": false
   },
   {
     "name": "Pica d'Estats",
@@ -371,7 +368,8 @@
     "region": "Pyrénées",
     "difficulty": "T3",
     "notes": "Point culminant de l'Ariège, longue randonnée depuis Vicdessos.",
-    "source": "outside.fr"
+    "source": "outside.fr",
+    "done": false
   },
   {
     "name": "Pic du Milieu",
@@ -382,7 +380,8 @@
     "region": "Pyrénées",
     "difficulty": "T3",
     "notes": "Secteur du massif du Vignemale, Gavarnie.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Pic de Néouvielle",
@@ -392,8 +391,9 @@
     "massif": "Néouvielle",
     "region": "Pyrénées",
     "difficulty": "T3",
-    "notes": "Réserve naturelle du Néouvielle, névés résiduels possibles en début de saison.",
-    "source": "altituderando.com"
+    "notes": "Réserve naturelle du Néouvielle ; petite cheminée à l'arrivée nécessitant les mains. Attention : crampons et piolet souvent indispensables une bonne partie de la saison (névés/glace persistants) — se renseigner sur les conditions avant de partir, pas seulement 'en début de saison'.",
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Grand Astazou",
@@ -403,8 +403,9 @@
     "massif": "Cirque de Gavarnie",
     "region": "Pyrénées",
     "difficulty": "T4",
-    "notes": "Depuis le refuge de Tuquerouye, course plus sérieuse mais sans corde ni piolet requis.",
-    "source": "altituderando.com"
+    "notes": "Sommet lui-même sans corde ni piolet nécessaire, MAIS l'accès classique au refuge de Tuquerouye passe par un couloir raide (40-45°) souvent enneigé/glacé, typiquement engagé (crampons/piolet) tant qu'il n'est pas totalement déneigé — se renseigner sur une variante d'accès et les conditions avant de partir.",
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Pic Maubic",
@@ -415,7 +416,8 @@
     "region": "Pyrénées",
     "difficulty": "T3",
     "notes": "Difficulté moyenne depuis Saint-Lary-Soulan.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Turon de Néouvielle",
@@ -426,29 +428,8 @@
     "region": "Pyrénées",
     "difficulty": "T3",
     "notes": "Depuis Barèges, secteur du massif du Néouvielle.",
-    "source": "altituderando.com"
-  },
-  {
-    "name": "Pic de Batoua",
-    "altitude_m": 3034,
-    "lat": 42.7087,
-    "lon": 0.3363,
-    "massif": "Frontière franco-espagnole",
-    "region": "Pyrénées",
-    "difficulty": "T4",
-    "notes": "Longue arête aérienne entre pics frontaliers.",
-    "source": "outside.fr"
-  },
-  {
-    "name": "Petit Vignemale",
-    "altitude_m": 3032,
-    "lat": 42.7747,
-    "lon": -0.135,
-    "massif": "Vignemale",
-    "region": "Pyrénées",
-    "difficulty": "T4",
-    "notes": "Depuis Cauterets/Gaube, ressaut rocheux facile en fin de course.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "Pic d'Estaragne",
@@ -459,7 +440,8 @@
     "region": "Pyrénées",
     "difficulty": "T3",
     "notes": "Circuit du Cap de Long, Aragnouet.",
-    "source": "altituderando.com"
+    "source": "altituderando.com",
+    "done": false
   },
   {
     "name": "La Grande Fache",
@@ -468,8 +450,9 @@
     "lon": -0.2379,
     "massif": "Marcadau",
     "region": "Pyrénées",
-    "difficulty": "T2",
-    "notes": "Accès facile depuis le Pont d'Espagne, itinéraire cairné.",
-    "source": "outside.fr"
+    "difficulty": "T3",
+    "notes": "Accès depuis le Pont d'Espagne, itinéraire cairné ; les derniers ~350 m de dénivelé comportent un passage rocheux (niveau II) nécessitant régulièrement les mains — plus engagé qu'un simple sentier, mais non technique (pas de corde, pas de glacier obligatoire).",
+    "source": "outside.fr",
+    "done": false
   }
 ]
