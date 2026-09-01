@@ -183,3 +183,41 @@ restent à surveiller (non modifiés, mais signalés par l'audit) :
   grande partie inaccessible aux outils de recherche automatisés,
   contenu généré en JavaScript) restent, comme indiqué en section 3, des
   estimations à recouper avant une sortie réelle.
+
+## 8. Balayage de complétude du 2026-09-01
+
+Un second passage a cherché spécifiquement des sommets non-techniques
+manquants dans des massifs jusque-là peu creusés (Beaufortain, Grandes
+Rousses, Belledonne, Mercantour, Ossau, Couserans, Aure/Louron, Écrins
+périphérie). **2 sommets supplémentaires vérifiés ajoutés** (40 au
+total) :
+
+- **La Mortice (sommet Nord)** (3186 m, Ubaye/Queyras) — traversée de
+  crête depuis La Mortice (sommet Sud), déjà dans la liste.
+- **Pic du Montcalm** (3077 m, Ariège) — souvent enchaîné avec la Pica
+  d'Estats voisine, déjà dans la liste.
+
+**Massifs vérifiés sans rien à ajouter** (point culminant sous 3000 m ou
+sommets tous trop techniques) : Beaufortain (max 2995 m), Grandes Rousses
+(Pic Bayle 3465 m mais glacier/crevasses sur toutes les voies), Belledonne
+(max 2977 m), Ossau (max 2974 m), Couserans (max 2880 m). Au passage,
+deux idées reçues corrigées : le Mont Mounier culmine en réalité à
+**2817 m** (pas 3000 m+, contrairement à ce qu'affirment certains sites) ;
+la Cime du Gélas (3143 m, Mercantour) est en réalité de l'alpinisme
+(PD-, escalade III exposée) sur toutes les voies trouvées — les deux
+n'ont jamais figuré dans cette liste, mais ne devraient pas y figurer par
+erreur non plus.
+
+**Candidat rejeté** : Pic du Maupas (3109 m, Luchonnais) — des résumés le
+présentent comme facile, mais le topo détaillé le cote T6 avec escalade
+I/II obligatoire hors-sentier. Exclu.
+
+**Point de vigilance non tranché** : la liste de référence
+altituderando « sommets pyrénéens accessibles » inclut 3 sommets que
+l'audit critique (section 7) a retirés de ce projet (Pic du Marboré, Pic
+de Batoua, Petit Vignemale) pour des raisons techniques documentées. Ce
+désaccord entre une source réputée et notre audit n'a pas été retranché
+plus avant — à garder en tête si tu recroises ces trois sommets ailleurs :
+soit notre audit est plus strict à raison (aligné avec la logique
+appliquée au reste de la liste), soit ces trois-là méritent un
+réexamen si tu veux challenger la décision.

@@ -454,5 +454,29 @@
     "notes": "Accès depuis le Pont d'Espagne, itinéraire cairné ; les derniers ~350 m de dénivelé comportent un passage rocheux (niveau II) nécessitant régulièrement les mains — plus engagé qu'un simple sentier, mais non technique (pas de corde, pas de glacier obligatoire).",
     "source": "outside.fr",
     "done": false
+  },
+  {
+    "name": "La Mortice (sommet Nord)",
+    "altitude_m": 3186,
+    "lat": 44.5822295,
+    "lon": 6.7679079,
+    "massif": "Ubaye / Queyras",
+    "region": "Alpes",
+    "difficulty": "T3",
+    "notes": "Se rejoint depuis La Mortice (sommet Sud, déjà dans la liste) par une traversée de crête réputée superbe ; portions hors-sentier demandant du sens de l'orientation, pentes raides et pierrier peu commode par endroits, mais aucune escalade, corde, ni glacier mentionnés dans les comptes-rendus croisés.",
+    "source": "altituderando.com",
+    "done": false
+  },
+  {
+    "name": "Pic du Montcalm",
+    "altitude_m": 3077,
+    "lat": 42.671885,
+    "lon": 1.4059884,
+    "massif": "Ariège (Vicdessos)",
+    "region": "Pyrénées",
+    "difficulty": "T4",
+    "notes": "Souvent enchaîné avec la Pica d'Estats voisine (déjà dans la liste) ; passages d'escalade facile (I/II) dans une petite cheminée en fin de course, pas de corde nécessaire en conditions normales/sèches, mais section impressionnante demandant de bien poser les pieds.",
+    "source": "altituderando.com",
+    "done": false
   }
 ]
