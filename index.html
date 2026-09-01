@@ -126,6 +126,33 @@
   #loading { padding: 24px 18px; color: var(--muted); font-size: 13px; }
   #loading.error { color: #c0392b; }
 
+  .cotation-detail-toggle {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--accent);
+    cursor: pointer;
+    background: none;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 3px 8px;
+  }
+  .cotation-detail-toggle:hover { background: var(--accent); color: #fff; }
+  .cotation-detail-body {
+    display: none;
+    margin-top: 8px;
+    padding: 8px 9px;
+    background: #f5f3ee;
+    border-radius: 7px;
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+  .cotation-detail-body.open { display: block; }
+  .cotation-detail-body .criteria { color: var(--muted); margin-bottom: 5px; }
+  .cotation-detail-body .why { color: var(--text); }
+  .cotation-detail-body .why strong { color: var(--accent); }
+
   #map { flex: 1; height: 100%; }
 
   .leaflet-popup-content { font-size: 13px; min-width: 220px; }
@@ -178,6 +205,15 @@
         <div class="label">Statut</div>
         <div class="chips" id="status-chips"></div>
       </div>
+      <div class="filter-group">
+        <div class="label">Progression (sommets faits)</div>
+        <div class="chips">
+          <div class="chip" id="export-progress">⬇ Exporter</div>
+          <div class="chip" id="import-progress">⬆ Importer</div>
+          <input type="file" id="import-file-input" accept="application/json" hidden />
+        </div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.4;">Sauvegardé automatiquement dans ce navigateur. Exporte régulièrement un fichier <code>progress.json</code> pour ne pas perdre ta progression si tu vides les données du navigateur.</div>
+      </div>
     </div>
     <div id="count"></div>
     <div id="list"><div id="loading">Chargement de mountains.json…</div></div>
@@ -198,11 +234,63 @@ function saveDone() {
   try { localStorage.setItem(DONE_KEY, JSON.stringify([...doneSet])); } catch (e) {}
 }
 
+function exportProgress() {
+  const payload = {
+    done: [...doneSet],
+    exported_at: new Date().toISOString()
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'progress.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function importProgressFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    let payload;
+    try {
+      payload = JSON.parse(reader.result);
+    } catch (e) {
+      alert('Fichier invalide (JSON illisible).');
+      return;
+    }
+    const list = Array.isArray(payload) ? payload : payload.done;
+    if (!Array.isArray(list)) {
+      alert('Fichier invalide : ce n\'est pas un export de progression reconnu.');
+      return;
+    }
+    const merge = doneSet.size > 0 && confirm(
+      `Fusionner avec la progression actuelle (${doneSet.size} sommet(s) déjà cochés) ?\n` +
+      `OK = fusionner (garder les deux)\nAnnuler = remplacer par le fichier importé`
+    );
+    if (!merge) doneSet = new Set();
+    list.forEach(name => doneSet.add(name));
+    saveDone();
+    markers.forEach(({ marker, data }) => {
+      marker.setIcon(makeIcon(DIFF_COLORS[data.difficulty] || '#555', doneSet.has(data.name)));
+    });
+    renderList();
+  };
+  reader.readAsText(file);
+}
+
 const DIFF_COLORS = { T2: '#2e8b57', T3: '#d98c1e', T4: '#c0392b' };
 const DIFF_LABELS = {
   T2: 'T2 · Randonnée montagne',
   T3: 'T3 · Randonnée exigeante',
   T4: 'T4 · Randonnée alpine (léger hors-sentier / rocher facile)'
+};
+// Critères génériques de l'échelle de randonnée CAS/SAC (cf. sources.md) — non spécifiques à un sommet.
+const DIFF_CRITERIA = {
+  T2: 'Sentier parfois raide, terrain par endroits irrégulier. Un minimum d\'expérience de la marche en montagne suffit, pas d\'exposition notable.',
+  T3: 'Sentier étroit et/ou exposé par endroits, les mains peuvent être nécessaires ponctuellement. Terrain jugé sûr par tout temps sec, plus engagé si mouillé/enneigé.',
+  T4: 'Passages hors-sentier possibles, rocher facile (mains posées, pas d\'escalade franche), terrain non assuré et exposition réelle en cas de chute — mais toujours sans corde ni matériel d\'alpinisme.'
 };
 const REGIONS = ['Alpes', 'Pyrénées'];
 const DIFFS = ['T2', 'T3', 'T4'];
@@ -257,6 +345,11 @@ function popupHtml(p) {
     <span class="badge" style="background:${color}">${p.difficulty}</span>
     <div class="pop-notes">${p.notes}</div>
     <div class="pop-source">Source : ${p.source}</div>
+    <button type="button" class="cotation-detail-toggle">Détail de la cotation ${p.difficulty}</button>
+    <div class="cotation-detail-body">
+      <div class="criteria"><strong>Critère général ${p.difficulty}</strong> (échelle CAS/SAC) : ${DIFF_CRITERIA[p.difficulty] || ''}</div>
+      <div class="why"><strong>Pourquoi ce sommet est coté ${p.difficulty}</strong> : ${p.notes} (source : ${p.source}). Voir <code>sources.md</code> dans le dépôt pour la méthodologie complète.</div>
+    </div>
     <label class="pop-done-row"><input type="checkbox" class="pop-done-checkbox" data-name="${p.name.replace(/"/g, '&quot;')}" ${checked}/> Sommet fait</label>
   `;
 }
@@ -276,8 +369,17 @@ function buildMarkers() {
     const marker = L.marker([p.lat, p.lon], { icon: makeIcon(color, doneSet.has(p.name)) });
     marker.bindPopup(() => popupHtml(p));
     marker.on('popupopen', (e) => {
-      const el = e.popup.getElement().querySelector('.pop-done-checkbox');
-      if (el) el.addEventListener('change', () => toggleDone(p.name));
+      const root = e.popup.getElement();
+      const doneEl = root.querySelector('.pop-done-checkbox');
+      if (doneEl) doneEl.addEventListener('change', () => toggleDone(p.name));
+      const toggleBtn = root.querySelector('.cotation-detail-toggle');
+      const toggleBody = root.querySelector('.cotation-detail-body');
+      if (toggleBtn && toggleBody) {
+        toggleBtn.addEventListener('click', () => {
+          toggleBody.classList.toggle('open');
+          e.popup.update();
+        });
+      }
     });
     markers.set(p.name, { marker, data: p });
   });
@@ -396,6 +498,16 @@ document.getElementById('search').addEventListener('input', e => {
   state.query = e.target.value.trim();
   syncMarkers();
   renderList();
+});
+
+document.getElementById('export-progress').addEventListener('click', exportProgress);
+document.getElementById('import-progress').addEventListener('click', () => {
+  document.getElementById('import-file-input').click();
+});
+document.getElementById('import-file-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) importProgressFile(file);
+  e.target.value = '';
 });
 
 // Légende (rappel des couleurs, calques activables via le contrôle en haut à droite ou les puces)

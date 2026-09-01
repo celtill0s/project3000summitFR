@@ -41,8 +41,17 @@ puis ouvrir <http://localhost:8000>.
   (fait / à faire), et recherche texte libre (nom, massif).
 - **Suivi "sommet fait"** : une case à cocher (dans la liste et dans
   chaque popup) permet de marquer un sommet comme fait. L'état est
-  sauvegardé dans le `localStorage` du navigateur (propre à cet appareil/
-  navigateur, non partagé).
+  sauvegardé automatiquement dans le `localStorage` du navigateur (propre
+  à cet appareil/navigateur, non partagé).
+- **Export/Import de la progression** : bouton "Exporter" (barre latérale)
+  télécharge un fichier `progress.json` avec la liste des sommets faits.
+  Le bouton "Importer" recharge un `progress.json` précédemment exporté
+  (fusion ou remplacement, au choix). Utile pour ne pas perdre sa
+  progression si le navigateur est réinstallé ou ses données effacées —
+  penser à exporter régulièrement et à garder ce fichier quelque part de
+  sûr (le committer dans ce dépôt, un cloud personnel, etc.). Le
+  `localStorage` seul n'est **pas** garanti de survivre à un nettoyage du
+  navigateur.
 
 ## Modifier les données
 
