@@ -50,6 +50,9 @@ indiqués individuellement dans le champ `"source"` de chaque entrée de
 - **hexatrek.com** — contenu rando/trek longue distance, utilisé pour
   quelques sommets alpins (Mont Buet, Aiguille de la Grande Sassière, Mont
   Chaberton).
+- **bivouak.net**, **skitour.fr**, **pyrandonnees.fr** — sites de topos et
+  comptes-rendus, utilisés en complément lors d'une recherche de suivi pour
+  compléter le secteur du Queyras.
 
 **Important — degré de confiance** : pour la majorité des sommets, la
 cotation T2/T3/T4 est une **estimation construite à partir de la
@@ -78,6 +81,16 @@ ferrata équipée) :
   Écrins, Dôme de Neige des Écrins, Grande Casse, Mont Pourri, Grande
   Motte, Meije, etc.) — glacier et/ou corde obligatoires sur la voie
   normale.
+- **Massif du Néouvielle** : Pic Long (3192 m, arête NE cotée AD+/IV avec
+  rappels), Pic Badet (3160 m, passages II/III) et l'Aiguille Badet — de
+  l'alpinisme réel malgré des résumés parfois rassurants, exclus après
+  vérification.
+- **Chambeyron** : Brec de Chambeyron (3389 m, PD, rappels de 45-50 m) et
+  Aiguille de Chambeyron (3412 m, PD, couloir à 40-45°) — alpinisme
+  confirmé.
+- **Queyras** : Rochebrune (3320 m, escalade II, cordes fixes) et Rocca
+  Bianca (3059 m, PD, escalade I sup./II inf., cordes fixes) — trop
+  techniques malgré des comptes-rendus initiaux plus optimistes.
 
 ## 5. Coordonnées
 
@@ -89,9 +102,19 @@ OpenStreetMap disponibles pour chaque point coté.
 
 ## 6. Limites connues
 
-- La liste n'est **pas exhaustive à 100 %** : il existe d'autres 3000 m
-  "faciles" plus confidentiels, notamment dans le massif du Néouvielle et
-  autour de l'Ubaye/Queyras, qui ne sont pas encore répertoriés ici.
+- Une recherche de suivi (2026-09-01) a vérifié spécifiquement les massifs
+  du Néouvielle et de l'Ubaye/Queyras, initialement cités comme
+  potentiellement sous-représentés. Résultat : le Néouvielle et l'Ubaye
+  étaient déjà couverts pour ce qui est réellement non-technique — les
+  candidats supplémentaires plausibles (Pic Long, Pic Badet, Brec/Aiguille
+  de Chambeyron) se sont révélés être de l'alpinisme confirmé une fois
+  vérifiés (voir section 4). Le Queyras avait en revanche 5 sommets
+  supplémentaires réellement accessibles, ajoutés à la liste (Tête de la
+  Cula, Tête de Longet, Pointe Joanne, Grand Queyras, Pointe des Sagnes
+  Longues).
+- La liste reste **indicative, pas garantie exhaustive à 100 %** : malgré
+  cette vérification, d'autres 3000 m confidentiels peuvent exister et ne
+  pas encore être répertoriés ici.
 - Les cotations sont indicatives et peuvent nécessiter un ajustement selon
   la saison, l'enneigement et la météo du jour.
 - Toute contribution/correction est bienvenue en éditant `mountains.json`

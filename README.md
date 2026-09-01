@@ -46,21 +46,23 @@ puis ouvrir <http://localhost:8000>.
 - **Export/Import de la progression** : bouton "Exporter" (barre latérale)
   télécharge un fichier `progress.json` avec la liste des sommets faits.
   Le bouton "Importer" recharge un `progress.json` précédemment exporté
-  (fusion ou remplacement, au choix). Utile pour ne pas perdre sa
-  progression si le navigateur est réinstallé ou ses données effacées —
-  penser à exporter régulièrement et à garder ce fichier quelque part de
-  sûr (données personnelles : volontairement **non versionné**, voir
-  `.gitignore`). Le `localStorage` seul n'est **pas** garanti de survivre
-  à un nettoyage du navigateur.
+  (fusion ou remplacement, au choix). Le `localStorage` seul n'est **pas**
+  garanti de survivre à un nettoyage du navigateur ou à un changement
+  d'appareil : après un export, déplace le fichier téléchargé dans ce
+  dossier (`progress.json` à la racine) puis commite-le sur git — c'est
+  **versionné volontairement** pour servir de sauvegarde durable et
+  partagée entre appareils.
 - **Trace GPX par sommet** : dans la popup d'un sommet, bouton "Importer un
   GPX" pour associer un fichier `.gpx` (export d'une appli comme
   Visorando, Komoot, Openrunner…) à ce sommet. La trace est aussitôt
   dessinée sur la carte (calque "Traces GPX", activable/désactivable comme
   les autres) et sauvegardée dans le `localStorage` du navigateur pour se
-  recharger automatiquement au prochain chargement de la page. Comme pour
-  la progression, ces traces sont des données personnelles et ne sont
-  **pas** versionnées (`.gitignore`) — c'est du stockage propre à
-  l'appareil/navigateur utilisé, pas de sauvegarde automatique ailleurs.
+  recharger automatiquement au prochain chargement de la page. Pour la
+  rendre permanente, place le fichier `.gpx` dans un dossier `gpx/` de ce
+  dépôt, référence-le dans `mountains.json` via un champ `"gpx":
+  "gpx/nom-du-fichier.gpx"` sur l'entrée du sommet concerné, puis commite —
+  la carte le rechargera automatiquement à chaque visite, y compris sur un
+  autre appareil.
 
 ## Modifier les données
 
