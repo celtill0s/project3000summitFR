@@ -376,8 +376,10 @@ function buildMarkers() {
       const toggleBody = root.querySelector('.cotation-detail-body');
       if (toggleBtn && toggleBody) {
         toggleBtn.addEventListener('click', () => {
+          // NB: ne pas appeler popup.update() ici — avec un contenu défini par une
+          // fonction, update() régénère tout le HTML de la popup et annule donc ce
+          // toggle instantanément (et détache les listeners du bouton).
           toggleBody.classList.toggle('open');
-          e.popup.update();
         });
       }
     });
