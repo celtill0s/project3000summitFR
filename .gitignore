@@ -1,0 +1,5 @@
+# Traces GPX personnelles (importées via l'app, données privées) et le
+# suivi de progression exporté — volontairement non versionnés.
+*.gpx
+gpx/
+progress.json

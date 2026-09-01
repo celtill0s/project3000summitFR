@@ -153,6 +153,24 @@
   .cotation-detail-body .why { color: var(--text); }
   .cotation-detail-body .why strong { color: var(--accent); }
 
+  .gpx-row { margin-top: 8px; font-size: 12px; }
+  .gpx-row .gpx-btn {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--accent);
+    cursor: pointer;
+    background: none;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 3px 8px;
+    margin-right: 5px;
+    margin-top: 4px;
+  }
+  .gpx-row .gpx-btn:hover { background: var(--accent); color: #fff; }
+  .gpx-row .gpx-btn.danger { border-color: #c0392b; color: #c0392b; }
+  .gpx-row .gpx-btn.danger:hover { background: #c0392b; color: #fff; }
+  .gpx-row .gpx-status { color: var(--muted); font-size: 11px; margin-top: 3px; }
+
   #map { flex: 1; height: 100%; }
 
   .leaflet-popup-content { font-size: 13px; min-width: 220px; }
@@ -317,13 +335,162 @@ const diffLayers = {
 };
 DIFFS.forEach(d => diffLayers[d].addTo(map)); // tous visibles par défaut
 
+// Calque dédié aux traces GPX importées (itinéraires de rando par sommet).
+const gpxLayer = L.layerGroup().addTo(map);
+
 const layersControl = L.control.layers(null, {
   [`<span style="color:${DIFF_COLORS.T2}">&#9679;</span> ${DIFF_LABELS.T2}`]: diffLayers.T2,
   [`<span style="color:${DIFF_COLORS.T3}">&#9679;</span> ${DIFF_LABELS.T3}`]: diffLayers.T3,
-  [`<span style="color:${DIFF_COLORS.T4}">&#9679;</span> ${DIFF_LABELS.T4}`]: diffLayers.T4
+  [`<span style="color:${DIFF_COLORS.T4}">&#9679;</span> ${DIFF_LABELS.T4}`]: diffLayers.T4,
+  '<span style="color:#1f5f8b">&#9473;</span> Traces GPX': gpxLayer
 }, { collapsed: false, position: 'topright' }).addTo(map);
 
 const markers = new Map(); // name -> {marker, data}
+
+// --- GPX : import client, ou fichier fourni dans le dépôt (mountains.json -> "gpx": "gpx/xxx.gpx") ---
+const GPX_KEY = 'topmountains_gpx_v1';
+let gpxStore = {}; // name -> raw GPX text (uniquement les traces importées depuis le navigateur)
+try { gpxStore = JSON.parse(localStorage.getItem(GPX_KEY) || '{}'); } catch (e) { gpxStore = {}; }
+const gpxPolylines = new Map(); // name -> [L.Polyline, ...]
+
+function saveGpxStore() {
+  try {
+    localStorage.setItem(GPX_KEY, JSON.stringify(gpxStore));
+    return true;
+  } catch (e) {
+    return false; // quota localStorage dépassé
+  }
+}
+
+function parseGpxToSegments(gpxText) {
+  const doc = new DOMParser().parseFromString(gpxText, 'application/xml');
+  if (doc.querySelector('parsererror')) throw new Error('XML invalide');
+  const segments = [];
+  const segEls = doc.querySelectorAll('trkseg');
+  if (segEls.length) {
+    segEls.forEach(seg => {
+      const pts = [...seg.querySelectorAll('trkpt')]
+        .map(pt => [parseFloat(pt.getAttribute('lat')), parseFloat(pt.getAttribute('lon'))])
+        .filter(([lat, lon]) => !isNaN(lat) && !isNaN(lon));
+      if (pts.length > 1) segments.push(pts);
+    });
+  } else {
+    // pas de trace (trk) : on retombe sur un itinéraire (rte) si présent
+    const pts = [...doc.querySelectorAll('rtept')]
+      .map(pt => [parseFloat(pt.getAttribute('lat')), parseFloat(pt.getAttribute('lon'))])
+      .filter(([lat, lon]) => !isNaN(lat) && !isNaN(lon));
+    if (pts.length > 1) segments.push(pts);
+  }
+  if (!segments.length) throw new Error('Aucun point de trace (trkpt/rtept) trouvé dans ce GPX');
+  return segments;
+}
+
+function clearGpxForPeak(name) {
+  const existing = gpxPolylines.get(name);
+  if (existing) {
+    existing.forEach(line => gpxLayer.removeLayer(line));
+    gpxPolylines.delete(name);
+  }
+}
+
+function drawGpxForPeak(p, gpxText) {
+  const segments = parseGpxToSegments(gpxText); // peut lever une exception (propagée à l'appelant)
+  clearGpxForPeak(p.name);
+  const lines = segments.map(seg => L.polyline(seg, { color: '#1f5f8b', weight: 3, opacity: 0.85 }));
+  lines.forEach(line => {
+    line.bindTooltip(p.name, { sticky: true });
+    gpxLayer.addLayer(line);
+  });
+  gpxPolylines.set(p.name, lines);
+  return lines;
+}
+
+function importGpxFile(p, file, statusEl) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const lines = drawGpxForPeak(p, reader.result);
+      gpxStore[p.name] = reader.result;
+      const ok = saveGpxStore();
+      const bounds = L.latLngBounds(lines.flatMap(l => l.getLatLngs()));
+      map.fitBounds(bounds, { padding: [40, 40] });
+      if (statusEl) {
+        statusEl.textContent = ok
+          ? 'Trace importée et affichée sur la carte (sauvegardée dans ce navigateur).'
+          : 'Trace affichée, mais pas sauvegardée (stockage local plein) — réexporte-la ailleurs si besoin.';
+      }
+      refreshGpxRow(p);
+    } catch (err) {
+      if (statusEl) statusEl.textContent = 'Erreur : ' + err.message;
+    }
+  };
+  reader.onerror = () => { if (statusEl) statusEl.textContent = 'Impossible de lire ce fichier.'; };
+  reader.readAsText(file);
+}
+
+function deleteImportedGpx(p) {
+  delete gpxStore[p.name];
+  saveGpxStore();
+  clearGpxForPeak(p.name);
+  // si un GPX "officiel" du dépôt existe pour ce sommet, le recharger à la place
+  if (p.gpx) loadRepoGpx(p);
+  refreshGpxRow(p);
+}
+
+function loadRepoGpx(p) {
+  fetch(p.gpx)
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+    .then(text => drawGpxForPeak(p, text))
+    .catch(() => { /* pas grave : pas de trace fournie pour ce sommet, ou fichier introuvable */ });
+}
+
+function gpxRowHtml(p) {
+  const hasImported = Object.prototype.hasOwnProperty.call(gpxStore, p.name);
+  const hasAny = hasImported || gpxPolylines.has(p.name);
+  let body = '';
+  if (hasAny) {
+    body += `<div class="gpx-status">🧭 Trace ${hasImported ? 'importée' : 'fournie avec le projet'} affichée sur la carte (calque « Traces GPX »).</div>`;
+    body += `<button type="button" class="gpx-btn gpx-replace">Remplacer par un autre GPX</button>`;
+    if (hasImported) body += `<button type="button" class="gpx-btn danger gpx-delete">Supprimer ma trace</button>`;
+  } else {
+    body += `<button type="button" class="gpx-btn gpx-import">🧭 Importer un GPX</button>`;
+  }
+  body += `<input type="file" class="gpx-file-input" accept=".gpx,application/gpx+xml,application/xml,text/xml" hidden />`;
+  body += `<div class="gpx-status gpx-import-status"></div>`;
+  return `<div class="gpx-row" data-name="${p.name.replace(/"/g, '&quot;')}">${body}</div>`;
+}
+
+function bindGpxRow(root, p) {
+  const row = root.querySelector('.gpx-row');
+  if (!row) return;
+  const fileInput = row.querySelector('.gpx-file-input');
+  const statusEl = row.querySelector('.gpx-import-status');
+  const trigger = () => fileInput.click();
+  const importBtn = row.querySelector('.gpx-import');
+  const replaceBtn = row.querySelector('.gpx-replace');
+  const deleteBtn = row.querySelector('.gpx-delete');
+  if (importBtn) importBtn.addEventListener('click', trigger);
+  if (replaceBtn) replaceBtn.addEventListener('click', trigger);
+  if (deleteBtn) deleteBtn.addEventListener('click', () => deleteImportedGpx(p));
+  fileInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (file) importGpxFile(p, file, statusEl);
+    e.target.value = '';
+  });
+}
+
+function refreshGpxRow(p) {
+  const entry = markers.get(p.name);
+  if (!entry) return;
+  const popup = entry.marker.getPopup();
+  if (!popup || !popup.isOpen()) return;
+  const root = popup.getElement();
+  const row = root.querySelector('.gpx-row');
+  if (row) {
+    row.outerHTML = gpxRowHtml(p);
+    bindGpxRow(root, p);
+  }
+}
 
 function makeIcon(color, done) {
   const check = done ? '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:900;">&#10003;</div>' : '';
@@ -351,6 +518,7 @@ function popupHtml(p) {
       <div class="why"><strong>Pourquoi ce sommet est coté ${p.difficulty}</strong> : ${p.notes} (source : ${p.source}). Voir <code>sources.md</code> dans le dépôt pour la méthodologie complète.</div>
     </div>
     <label class="pop-done-row"><input type="checkbox" class="pop-done-checkbox" data-name="${p.name.replace(/"/g, '&quot;')}" ${checked}/> Sommet fait</label>
+    ${gpxRowHtml(p)}
   `;
 }
 
@@ -382,8 +550,19 @@ function buildMarkers() {
           toggleBody.classList.toggle('open');
         });
       }
+      bindGpxRow(root, p);
     });
     markers.set(p.name, { marker, data: p });
+  });
+}
+
+function loadAllGpx() {
+  PEAKS.forEach(p => {
+    if (Object.prototype.hasOwnProperty.call(gpxStore, p.name)) {
+      try { drawGpxForPeak(p, gpxStore[p.name]); } catch (e) { /* trace stockée corrompue, ignorée */ }
+    } else if (p.gpx) {
+      loadRepoGpx(p);
+    }
   });
 }
 
@@ -534,6 +713,7 @@ fetch('mountains.json')
     renderChipsAll();
     syncMarkers();
     renderList();
+    loadAllGpx();
   })
   .catch(err => {
     document.getElementById('list').innerHTML =
