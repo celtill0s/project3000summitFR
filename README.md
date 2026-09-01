@@ -49,9 +49,18 @@ puis ouvrir <http://localhost:8000>.
   (fusion ou remplacement, au choix). Utile pour ne pas perdre sa
   progression si le navigateur est réinstallé ou ses données effacées —
   penser à exporter régulièrement et à garder ce fichier quelque part de
-  sûr (le committer dans ce dépôt, un cloud personnel, etc.). Le
-  `localStorage` seul n'est **pas** garanti de survivre à un nettoyage du
-  navigateur.
+  sûr (données personnelles : volontairement **non versionné**, voir
+  `.gitignore`). Le `localStorage` seul n'est **pas** garanti de survivre
+  à un nettoyage du navigateur.
+- **Trace GPX par sommet** : dans la popup d'un sommet, bouton "Importer un
+  GPX" pour associer un fichier `.gpx` (export d'une appli comme
+  Visorando, Komoot, Openrunner…) à ce sommet. La trace est aussitôt
+  dessinée sur la carte (calque "Traces GPX", activable/désactivable comme
+  les autres) et sauvegardée dans le `localStorage` du navigateur pour se
+  recharger automatiquement au prochain chargement de la page. Comme pour
+  la progression, ces traces sont des données personnelles et ne sont
+  **pas** versionnées (`.gitignore`) — c'est du stockage propre à
+  l'appareil/navigateur utilisé, pas de sauvegarde automatique ailleurs.
 
 ## Modifier les données
 
