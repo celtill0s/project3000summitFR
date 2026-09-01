@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sommets &gt; 3000 m accessibles en randonnée</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root {
+    --bg: #f5f3ee;
+    --panel: #ffffff;
+    --text: #23272b;
+    --muted: #6b7280;
+    --border: #e2e0d8;
+    --accent: #2c5f4a;
+    --t2: #2e8b57;
+    --t3: #d98c1e;
+    --t4: #c0392b;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--text); background: var(--bg); }
+  #app { display: flex; height: 100vh; width: 100vw; }
+
+  #sidebar {
+    width: 340px;
+    min-width: 340px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #sidebar header {
+    padding: 16px 18px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  #sidebar h1 {
+    font-size: 17px;
+    margin: 0 0 4px;
+    color: var(--accent);
+  }
+  #sidebar .subtitle {
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  #controls {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .filter-group { display: flex; flex-direction: column; gap: 6px; }
+  .filter-group .label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-size: 12.5px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  #search {
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 13px;
+    background: var(--bg);
+    color: var(--text);
+  }
+  #count {
+    font-size: 12px;
+    color: var(--muted);
+    padding: 8px 18px 0;
+  }
+  #list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0 16px;
+  }
+  .peak-item {
+    padding: 9px 18px;
+    cursor: pointer;
+    border-bottom: 1px solid #f0efe9;
+  }
+  .peak-item:hover { background: #f2f0e8; }
+  .peak-item .row1 {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .peak-item .name { font-size: 13.5px; font-weight: 600; }
+  .peak-item .alt { font-size: 12.5px; color: var(--accent); font-weight: 600; white-space: nowrap; }
+  .peak-item .meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .badge {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 5px;
+    color: #fff;
+    margin-right: 6px;
+  }
+  .peak-item .done-check {
+    margin-right: 8px;
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    vertical-align: middle;
+    accent-color: var(--accent);
+  }
+  .peak-item.is-done { background: #f0f6f2; }
+  .peak-item.is-done .name { color: var(--muted); text-decoration: line-through; }
+  .pop-done-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12.5px; }
+  .pop-done-row input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }
+  #loading { padding: 24px 18px; color: var(--muted); font-size: 13px; }
+  #loading.error { color: #c0392b; }
+
+  #map { flex: 1; height: 100%; }
+
+  .leaflet-popup-content { font-size: 13px; min-width: 220px; }
+  .leaflet-popup-content h3 { margin: 0 0 4px; font-size: 14.5px; color: var(--accent); }
+  .leaflet-popup-content .pop-meta { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  .leaflet-popup-content .pop-notes { font-size: 12.5px; line-height: 1.4; }
+  .leaflet-popup-content .pop-source { font-size: 10.5px; color: var(--muted); margin-top: 6px; }
+
+  #legend {
+    position: absolute;
+    bottom: 18px;
+    right: 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    z-index: 500;
+  }
+  #legend .title { font-weight: 700; margin-bottom: 6px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+  #legend .row { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; }
+  #legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.2); }
+
+  @media (max-width: 760px) {
+    #app { flex-direction: column; }
+    #sidebar { width: 100%; min-width: 0; height: 42%; border-right: none; border-bottom: 1px solid var(--border); }
+    #map { height: 58%; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <header>
+      <h1>Sommets de plus de 3000 m</h1>
+      <div class="subtitle">Alpes françaises &amp; Pyrénées &mdash; accessibles à pied, sans matériel d'alpinisme (pas de glacier obligatoire, pas de corde, pas de via ferrata). Cotation randonnée CAS/SAC indicative (T2 à T4).</div>
+    </header>
+    <div id="controls">
+      <input id="search" type="text" placeholder="Rechercher un sommet, un massif…" />
+      <div class="filter-group">
+        <div class="label">Massif</div>
+        <div class="chips" id="region-chips"></div>
+      </div>
+      <div class="filter-group">
+        <div class="label">Difficulté (cotation randonnée, calques)</div>
+        <div class="chips" id="diff-chips"></div>
+      </div>
+      <div class="filter-group">
+        <div class="label">Statut</div>
+        <div class="chips" id="status-chips"></div>
+      </div>
+    </div>
+    <div id="count"></div>
+    <div id="list"><div id="loading">Chargement de mountains.json…</div></div>
+  </div>
+  <div id="map"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+let PEAKS = [];
+const DONE_KEY = 'topmountains_done_v1';
+let doneSet = new Set();
+try {
+  doneSet = new Set(JSON.parse(localStorage.getItem(DONE_KEY) || '[]'));
+} catch (e) { doneSet = new Set(); }
+
+function saveDone() {
+  try { localStorage.setItem(DONE_KEY, JSON.stringify([...doneSet])); } catch (e) {}
+}
+
+const DIFF_COLORS = { T2: '#2e8b57', T3: '#d98c1e', T4: '#c0392b' };
+const DIFF_LABELS = {
+  T2: 'T2 · Randonnée montagne',
+  T3: 'T3 · Randonnée exigeante',
+  T4: 'T4 · Randonnée alpine (léger hors-sentier / rocher facile)'
+};
+const REGIONS = ['Alpes', 'Pyrénées'];
+const DIFFS = ['T2', 'T3', 'T4'];
+const STATUSES = ['Tous', 'Fait', 'À faire'];
+
+const state = {
+  regions: new Set(REGIONS),
+  status: 'Tous',
+  query: ''
+};
+
+const map = L.map('map', { zoomControl: true }).setView([44.8, 4.0], 6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 18,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
+
+// Un calque Leaflet par niveau de difficulté (cotation CAS/SAC) — activables/désactivables
+// indépendamment via le sélecteur de calques natif (en haut à droite) ou les puces de la barre latérale.
+const diffLayers = {
+  T2: L.layerGroup(),
+  T3: L.layerGroup(),
+  T4: L.layerGroup()
+};
+DIFFS.forEach(d => diffLayers[d].addTo(map)); // tous visibles par défaut
+
+const layersControl = L.control.layers(null, {
+  [`<span style="color:${DIFF_COLORS.T2}">&#9679;</span> ${DIFF_LABELS.T2}`]: diffLayers.T2,
+  [`<span style="color:${DIFF_COLORS.T3}">&#9679;</span> ${DIFF_LABELS.T3}`]: diffLayers.T3,
+  [`<span style="color:${DIFF_COLORS.T4}">&#9679;</span> ${DIFF_LABELS.T4}`]: diffLayers.T4
+}, { collapsed: false, position: 'topright' }).addTo(map);
+
+const markers = new Map(); // name -> {marker, data}
+
+function makeIcon(color, done) {
+  const check = done ? '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:900;">&#10003;</div>' : '';
+  return L.divIcon({
+    className: '',
+    html: `<div style="position:relative;width:16px;height:16px;border-radius:50%;background:${color};border:2px solid ${done ? '#1b3a2c' : '#fff'};box-shadow:0 0 0 1px rgba(0,0,0,.35);">${check}</div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+    popupAnchor: [0, -8]
+  });
+}
+
+function popupHtml(p) {
+  const color = DIFF_COLORS[p.difficulty] || '#555';
+  const checked = doneSet.has(p.name) ? 'checked' : '';
+  return `
+    <h3>${p.name}</h3>
+    <div class="pop-meta">${p.altitude_m} m &middot; ${p.massif} &middot; ${p.region}</div>
+    <span class="badge" style="background:${color}">${p.difficulty}</span>
+    <div class="pop-notes">${p.notes}</div>
+    <div class="pop-source">Source : ${p.source}</div>
+    <label class="pop-done-row"><input type="checkbox" class="pop-done-checkbox" data-name="${p.name.replace(/"/g, '&quot;')}" ${checked}/> Sommet fait</label>
+  `;
+}
+
+function toggleDone(name) {
+  if (doneSet.has(name)) doneSet.delete(name); else doneSet.add(name);
+  saveDone();
+  const entry = markers.get(name);
+  if (entry) entry.marker.setIcon(makeIcon(DIFF_COLORS[entry.data.difficulty] || '#555', doneSet.has(name)));
+  renderList();
+  updateDoneCount();
+}
+
+function buildMarkers() {
+  PEAKS.forEach(p => {
+    const color = DIFF_COLORS[p.difficulty] || '#555';
+    const marker = L.marker([p.lat, p.lon], { icon: makeIcon(color, doneSet.has(p.name)) });
+    marker.bindPopup(() => popupHtml(p));
+    marker.on('popupopen', (e) => {
+      const el = e.popup.getElement().querySelector('.pop-done-checkbox');
+      if (el) el.addEventListener('change', () => toggleDone(p.name));
+    });
+    markers.set(p.name, { marker, data: p });
+  });
+}
+
+function renderChips(containerId, values, activeCheckFn, labelFn, colorFn, onToggle) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  values.forEach(v => {
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (activeCheckFn(v) ? ' active' : '');
+    const dotColor = colorFn ? colorFn(v) : null;
+    chip.innerHTML = (dotColor ? `<span class="dot" style="background:${dotColor}"></span>` : '') + labelFn(v);
+    chip.onclick = () => { onToggle(v); };
+    el.appendChild(chip);
+  });
+}
+
+function toggleRegion(v) {
+  if (state.regions.has(v)) state.regions.delete(v); else state.regions.add(v);
+  if (state.regions.size === 0) REGIONS.forEach(r => state.regions.add(r));
+  renderChipsAll();
+  syncMarkers();
+  renderList();
+}
+
+function toggleDiffLayer(d) {
+  if (map.hasLayer(diffLayers[d])) map.removeLayer(diffLayers[d]);
+  else map.addLayer(diffLayers[d]);
+  // 'overlayadd'/'overlayremove' events below keep chips & list in sync
+}
+
+function setStatus(v) {
+  state.status = v;
+  renderChipsAll();
+  renderList();
+}
+
+function passesBaseFilter(p) {
+  if (!state.regions.has(p.region)) return false;
+  if (state.status === 'Fait' && !doneSet.has(p.name)) return false;
+  if (state.status === 'À faire' && doneSet.has(p.name)) return false;
+  if (state.query) {
+    const q = state.query.toLowerCase();
+    if (!(p.name.toLowerCase().includes(q) || p.massif.toLowerCase().includes(q))) return false;
+  }
+  return true;
+}
+
+function passesFullFilter(p) {
+  return passesBaseFilter(p) && map.hasLayer(diffLayers[p.difficulty]);
+}
+
+function updateDoneCount() {
+  const el = document.getElementById('count');
+  const visible = PEAKS.filter(passesFullFilter);
+  const doneVisible = visible.filter(p => doneSet.has(p.name)).length;
+  el.textContent = `${visible.length} sommet${visible.length > 1 ? 's' : ''} affiché${visible.length > 1 ? 's' : ''} sur ${PEAKS.length} · ${doneSet.size} fait${doneSet.size > 1 ? 's' : ''} au total`;
+}
+
+function renderList() {
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+  const filtered = PEAKS.filter(passesFullFilter).sort((a, b) => b.altitude_m - a.altitude_m);
+  updateDoneCount();
+
+  filtered.forEach(p => {
+    const item = document.createElement('div');
+    const done = doneSet.has(p.name);
+    item.className = 'peak-item' + (done ? ' is-done' : '');
+    const color = DIFF_COLORS[p.difficulty];
+    item.innerHTML = `
+      <div class="row1">
+        <span>
+          <input type="checkbox" class="done-check" ${done ? 'checked' : ''} title="Marquer comme fait" />
+          <span class="name">${p.name}</span>
+        </span>
+        <span class="alt">${p.altitude_m} m</span>
+      </div>
+      <div class="meta"><span class="badge" style="background:${color}">${p.difficulty}</span>${p.massif} &middot; ${p.region}</div>
+    `;
+    item.querySelector('.done-check').addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleDone(p.name);
+    });
+    item.addEventListener('click', () => {
+      const m = markers.get(p.name);
+      map.flyTo([p.lat, p.lon], 12, { duration: 0.6 });
+      m.marker.openPopup();
+    });
+    list.appendChild(item);
+  });
+}
+
+function syncMarkers() {
+  markers.forEach(({ marker, data }) => {
+    const group = diffLayers[data.difficulty];
+    const show = passesBaseFilter(data);
+    if (show && !group.hasLayer(marker)) group.addLayer(marker);
+    if (!show && group.hasLayer(marker)) group.removeLayer(marker);
+  });
+}
+
+function renderChipsAll() {
+  renderChips('region-chips', REGIONS, v => state.regions.has(v), v => v, null, toggleRegion);
+  renderChips('diff-chips', DIFFS, v => map.hasLayer(diffLayers[v]), v => v, v => DIFF_COLORS[v], toggleDiffLayer);
+  renderChips('status-chips', STATUSES, v => state.status === v, v => v, null, setStatus);
+}
+
+map.on('overlayadd overlayremove', () => {
+  renderChipsAll();
+  renderList();
+});
+
+document.getElementById('search').addEventListener('input', e => {
+  state.query = e.target.value.trim();
+  syncMarkers();
+  renderList();
+});
+
+// Légende (rappel des couleurs, calques activables via le contrôle en haut à droite ou les puces)
+const legend = L.control({ position: 'bottomright' });
+legend.onAdd = function () {
+  const div = L.DomUtil.create('div', '');
+  div.id = 'legend';
+  div.innerHTML = `
+    <div class="title">Cotation randonnée</div>
+    ${DIFFS.map(d => `<div class="row"><span class="dot" style="background:${DIFF_COLORS[d]}"></span>${DIFF_LABELS[d]}</div>`).join('')}
+    <div class="row" style="margin-top:6px;"><span style="color:${'#1b3a2c'}">&#10003;</span>&nbsp;Sommet fait</div>
+  `;
+  return div;
+};
+legend.addTo(map);
+
+fetch('mountains.json')
+  .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+  .then(data => {
+    PEAKS = data;
+    buildMarkers();
+    renderChipsAll();
+    syncMarkers();
+    renderList();
+  })
+  .catch(err => {
+    document.getElementById('list').innerHTML =
+      `<div id="loading" class="error">Impossible de charger mountains.json (${err.message}).<br><br>
+       Si vous avez ouvert ce fichier directement (file://), les navigateurs bloquent le chargement d'un JSON local par sécurité.
+       Lancez un petit serveur local depuis ce dossier, par ex. : <code>python3 -m http.server</code>, puis ouvrez
+       <code>http://localhost:8000</code>.</div>`;
+  });
+</script>
+</body>
+</html>
