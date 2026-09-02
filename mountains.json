@@ -478,5 +478,41 @@
     "notes": "Souvent enchaîné avec la Pica d'Estats voisine (déjà dans la liste) ; passages d'escalade facile (I/II) dans une petite cheminée en fin de course, pas de corde nécessaire en conditions normales/sèches, mais section impressionnante demandant de bien poser les pieds.",
     "source": "altituderando.com",
     "done": false
+  },
+  {
+    "name": "Petit Vignemale",
+    "altitude_m": 3032,
+    "lat": 42.7747,
+    "lon": -0.135,
+    "massif": "Vignemale",
+    "region": "Pyrénées",
+    "difficulty": "T4",
+    "notes": "Depuis le barrage d'Ossoue via le refuge de Bayssellance et le col de la Hourquette d'Ossoue — voie distincte du Grand Vignemale/Pique Longue, qui lui nécessite le glacier d'Ossoue. Aucune difficulté par beau temps sans neige ; crampons/piolet utiles si névés persistants sur la crête finale (variable selon saison).",
+    "source": "altituderando.com, topopyrenees.com",
+    "done": false
+  },
+  {
+    "name": "Pic de Batoua",
+    "altitude_m": 3034,
+    "lat": 42.7087,
+    "lon": 0.3363,
+    "massif": "Frontière franco-espagnole",
+    "region": "Pyrénées",
+    "difficulty": "T4",
+    "notes": "Sommet occidental (3034m), atteint depuis le Pic de Cauarère en ~45 min de crête, sans la cheminée technique (celle-ci concerne uniquement la suite de la crête vers le sommet oriental, hors de cet itinéraire) ; quelques passages hors-sentier nécessitant les mains, non technique.",
+    "source": "topopyrenees.com, rando-marche.fr",
+    "done": false
+  },
+  {
+    "name": "Pic du Marboré",
+    "altitude_m": 3248,
+    "lat": 42.6928,
+    "lon": 0.0116,
+    "massif": "Cirque de Gavarnie (frontière)",
+    "region": "Pyrénées",
+    "difficulty": "T4",
+    "notes": "Depuis le refuge des Sarradets. En conditions sèches d'été : pas de corde ni de piolet permanents nécessaires, deux courts passages d'escalade facile (mains, niveau II+). Névés/glace peuvent persister sur la moraine et un replat, surtout en début de saison — se renseigner sur les conditions avant de partir.",
+    "source": "topopyrenees.com",
+    "done": false
   }
 ]

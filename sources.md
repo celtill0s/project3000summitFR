@@ -91,20 +91,19 @@ ferrata équipée) :
 - **Queyras** : Rochebrune (3320 m, escalade II, cordes fixes) et Rocca
   Bianca (3059 m, PD, escalade I sup./II inf., cordes fixes) — trop
   techniques malgré des comptes-rendus initiaux plus optimistes.
-- **Pyrénées** (retirés lors de l'audit critique du 2026-09-01, voir
-  section 7) :
-  - **Pic du Marboré** (3248 m) — moraine/replat où neige-glace persistent
-    souvent, crampons nécessaires une bonne partie de l'année (même cirque
-    que le Casque du Marboré, déjà exclu).
-  - **Pic Perdiguère** (3222 m) — cheminée cotée niveau II obligatoire
-    après le col supérieur de Litérole.
-  - **Pic du Balaïtous** (3144 m) — escalade finale II+, vire exposée
-    avec 600 m de vide, réputé pour des accidents liés à une
-    sous-estimation de l'engagement.
-  - **Pic de Batoua** (3034 m) — cheminée de 5 m cotée II+ sur la crête
-    Cauarère–Batoua.
-  - **Petit Vignemale** (3032 m) — voie normale dite "des Séracs" :
-    traversée glaciaire + escalade PD+/III, alpinisme et non randonnée.
+- **Pyrénées** (retirés lors de l'audit critique du 2026-09-01, confirmés
+  après une seconde vérification le 2026-09-01 — voir section 9) :
+  - **Pic Perdiguère** (3222 m) — cheminée de 30 m cotée niveau II
+    obligatoire (pas une variante évitable) juste après le col supérieur
+    de Litérole, sur la voie directe.
+  - **Pic du Balaïtous** (3144 m) — voie normale (Grande Diagonale) : PD,
+    escalade finale II+, vire ascendante exposée avec 600 m de vide en
+    contrebas, décrite comme nécessitant un "bon niveau montagne" même en
+    conditions sèches.
+
+  (Pic du Marboré, Pic de Batoua et Petit Vignemale, initialement retirés
+  ici, ont été réintégrés après vérification — voir section 9 : le
+  retrait reposait sur une confusion d'itinéraire ou de sommet.)
 
 ## 5. Coordonnées
 
@@ -212,12 +211,68 @@ erreur non plus.
 présentent comme facile, mais le topo détaillé le cote T6 avec escalade
 I/II obligatoire hors-sentier. Exclu.
 
-**Point de vigilance non tranché** : la liste de référence
-altituderando « sommets pyrénéens accessibles » inclut 3 sommets que
-l'audit critique (section 7) a retirés de ce projet (Pic du Marboré, Pic
-de Batoua, Petit Vignemale) pour des raisons techniques documentées. Ce
-désaccord entre une source réputée et notre audit n'a pas été retranché
-plus avant — à garder en tête si tu recroises ces trois sommets ailleurs :
-soit notre audit est plus strict à raison (aligné avec la logique
-appliquée au reste de la liste), soit ces trois-là méritent un
-réexamen si tu veux challenger la décision.
+**Point de vigilance signalé ici, tranché en section 9** : la liste de
+référence altituderando « sommets pyrénéens accessibles » incluait 3
+sommets que l'audit critique (section 7) avait retirés (Pic du Marboré,
+Pic de Batoua, Petit Vignemale). Un réexamen ciblé (section 9) a confirmé
+que ce désaccord avait raison : les 3 ont été réintégrés après avoir
+identifié la confusion d'itinéraire/de sommet à l'origine de leur retrait
+initial.
+
+## 9. Correction du 2026-09-01 : confusions d'itinéraire/de sommet
+
+Suite à un signalement utilisateur pointant l'absence du Petit Vignemale,
+les 5 sommets retirés en section 7 ont été réexaminés un par un avec des
+sources supplémentaires (fetch direct de topos dédiés, pas seulement des
+résumés). Résultat : **3 réintégrés, 2 confirmés retirés**.
+
+**Réintégrés (l'exclusion reposait sur une confusion)** :
+
+- **Petit Vignemale** (3032 m) : le retrait citait la voie "des Séracs"
+  (glaciaire, PD+/III) — mais celle-ci mène en réalité au Grand Vignemale
+  (Pique Longue, 3298 m), un sommet différent. Le Petit Vignemale a sa
+  propre voie normale, via le refuge de Bayssellance et le col de la
+  Hourquette d'Ossoue, confirmée non-technique (aucune difficulté par
+  beau temps sec) par deux topos indépendants (altituderando.com,
+  topopyrenees.com). Névés persistants possibles = prudence saisonnière,
+  pas alpinisme.
+- **Pic de Batoua** (3034 m, sommet occidental — celui de cette liste) :
+  le retrait citait une cheminée de 5 m cotée II+ — mais celle-ci se
+  trouve sur la crête *au-delà* du sommet occidental, en continuant vers
+  le sommet oriental (un troisième sommet distinct du massif). Le sommet
+  occidental (3034 m) s'atteint depuis le Pic de Cauarère en ~45 min sans
+  jamais rencontrer cette cheminée (topopyrenees.com).
+- **Pic du Marboré** (3248 m) : le retrait invoquait des névés/glace
+  persistants — un problème saisonnier, pas un glacier permanent (le même
+  argument avait pourtant justifié de *garder* le Pic de Néouvielle et le
+  Grand Astazou avec une note plutôt que de les retirer — incohérence
+  interne de l'audit initial). En conditions sèches d'été, la voie normale
+  (refuge des Sarradets) ne nécessite ni corde ni piolet permanents ;
+  deux courts passages d'escalade facile (II+, mains) restent dans la
+  tolérance déjà admise ailleurs dans cette liste (T4, comparer à la
+  Pointe de la Grande Sassière ou Ouille Noire).
+
+**Confirmés retirés (l'exclusion tient après réexamen)** :
+
+- **Pic Perdiguère** : une cheminée de 30 m cotée II reste décrite comme
+  faisant partie de la voie directe après le col supérieur de Litérole,
+  "pas une variante" (topopyrenees.com, citation explicite). Une mention
+  annexe évoque un aller-retour "sans difficulté particulière" depuis le
+  refuge d'Arlaud — non recoupée en détail, donc gardé comme retiré par
+  prudence, mais c'est une piste à vérifier si tu veux challenger cette
+  décision plus loin.
+- **Pic du Balaïtous** : voie normale (Grande Diagonale) cotée PD avec
+  escalade II+ finale et une vire exposée dominant 600 m de vide,
+  qualifiée ailleurs de "nécessitant un bon niveau montagne" même par
+  beau temps sec — plus engagé et plus sérieux que les cas réintégrés
+  ci-dessus (exposition sostenue, pas juste un ou deux pas de II).
+
+**Leçon retenue** : deux des trois erreurs initiales venaient de citer la
+difficulté d'un *itinéraire ou sommet voisin* plutôt que celle du sommet
+réellement listé (même schéma que l'ambiguïté déjà signalée pour la
+Pointe d'Aval/Chauvet en section 7) — un piège à surveiller pour toute
+future vérification, en particulier pour les massifs avec plusieurs
+sommets homonymes ou très proches (Vignemale, Batoua, Marboré/Casque du
+Marboré).
+
+**43 sommets au total désormais.**
