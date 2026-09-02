@@ -152,6 +152,8 @@
   .cotation-detail-body .criteria { color: var(--muted); margin-bottom: 5px; }
   .cotation-detail-body .why { color: var(--text); }
   .cotation-detail-body .why strong { color: var(--accent); }
+  .cotation-detail-body .source-link { color: var(--muted); margin-top: 5px; font-size: 11px; }
+  .cotation-detail-body .source-link a { color: var(--accent); }
 
   .gpx-row { margin-top: 8px; font-size: 12px; }
   .gpx-row .gpx-btn {
@@ -688,7 +690,8 @@ function popupHtml(p) {
     <button type="button" class="cotation-detail-toggle">Détail de la cotation ${p.difficulty}</button>
     <div class="cotation-detail-body">
       <div class="criteria"><strong>Critère général ${p.difficulty}</strong> (échelle CAS/SAC) : ${DIFF_CRITERIA[p.difficulty] || ''}</div>
-      <div class="why"><strong>Pourquoi ce sommet est coté ${p.difficulty}</strong> : ${p.notes} (source : ${p.source}). Voir <code>sources.md</code> dans le dépôt pour la méthodologie complète.</div>
+      <div class="why"><strong>Pourquoi ce sommet est coté ${p.difficulty}</strong> : ${p.notes}</div>
+      <div class="source-link">Source : ${p.source_url ? `<a href="${p.source_url}" target="_blank" rel="noopener noreferrer">${p.source}</a>` : p.source}. Voir <code>sources.md</code> dans le dépôt pour la méthodologie complète.</div>
     </div>
     <label class="pop-done-row"><input type="checkbox" class="pop-done-checkbox" data-name="${p.name.replace(/"/g, '&quot;')}" ${checked}/> Sommet fait</label>
     ${gpxRowHtml(p)}
@@ -878,7 +881,7 @@ legend.onAdd = function () {
 };
 legend.addTo(map);
 
-fetch('mountains.json')
+fetch('mountains.json?v=' + Date.now(), { cache: 'no-store' })
   .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
   .then(data => {
     PEAKS = data;
