@@ -275,4 +275,30 @@ future vérification, en particulier pour les massifs avec plusieurs
 sommets homonymes ou très proches (Vignemale, Batoua, Marboré/Casque du
 Marboré).
 
-**43 sommets au total désormais.**
+**43 sommets au total à ce stade.**
+
+## 10. Lien source par sommet + ajout du Râteau d'Aussois (2026-09-02)
+
+Chaque entrée de `mountains.json` porte désormais un champ `source_url`
+pointant vers la page précise (topo/compte-rendu) qui a servi à établir sa
+cotation — affiché en hyperlien cliquable dans le panneau "Détail de la
+cotation" de la carte. Recherché sommet par sommet (recherches web ciblées,
+sans délégation à des agents cette fois — cf. section 9 pour le contexte
+de cet arbitrage), 44/44 entrées ont une URL vérifiée.
+
+Au passage, un sommet supplémentaire a été trouvé et ajouté :
+
+- **Râteau d'Aussois** (3131 m, Vanoise) : plateau sommital cairné,
+  accessible par un bon chemin ; recherche de passage dans les rochers
+  sur les derniers mètres après le col de la Masse, aucune difficulté
+  d'escalade ni glacier. Source : randonnees-en-maurienne.fr.
+
+**Candidat examiné mais non ajouté** : les pics de Clarabide (3020 m) et
+de Gias (3011 m), vallée du Louron — cotés "Difficile" avec une cheminée
+non cotée à escalader vers Gias, mains nécessaires sur pierrier instable,
+mais sans glacier ni corde. Non ajoutés faute de coordonnées de sommet
+fiables (recherche Nominatim infructueuse sous ces noms français — les
+toponymes locaux/espagnols diffèrent). À revisiter si des coordonnées
+précises sont trouvées.
+
+**44 sommets au total désormais.**

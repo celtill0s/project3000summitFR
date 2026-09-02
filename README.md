@@ -84,7 +84,10 @@ Chaque entrée suit ce schéma :
   "region": "Alpes" ou "Pyrénées",
   "difficulty": "T2" | "T3" | "T4",
   "notes": "Description courte de l'itinéraire/accès",
-  "source": "domaine-source.fr"
+  "source": "domaine-source.fr",
+  "source_url": "https://... (page précise, affichée en lien cliquable dans le \"Détail de la cotation\")",
+  "done": false,
+  "gpx": "gpx/nom-du-fichier.gpx (optionnel)"
 }
 ```
 
