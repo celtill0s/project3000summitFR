@@ -1,9 +1,13 @@
-# topMountains
+# project3000summitFR
 
 Carte interactive (Leaflet + fonds OpenStreetMap) des sommets de plus de
 3000 m des **Alpes françaises** et des **Pyrénées françaises** accessibles
 à pied, sans matériel d'alpinisme (pas de glacier obligatoire, pas de
 corde, pas de via ferrata).
+
+## Aperçu
+
+![Vue générale de la carte](screenshots/01-vue-generale.png)
 
 ## Utilisation
 
