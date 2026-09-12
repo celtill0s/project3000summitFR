@@ -1,0 +1,12 @@
+# Données personnelles (coché/commentaires/photos/vidéos/gpx) : vivent uniquement sur le
+# serveur qui héberge l'appli, jamais dans ce dépôt public.
+/data/
+
+# Secrets de déploiement (identifiant + hash du mot de passe Basic Auth), montés comme
+# secrets Docker — jamais un .env, jamais commités.
+/secrets/
+.env
+
+__pycache__/
+*.pyc
+.venv/
