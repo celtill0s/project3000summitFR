@@ -1,0 +1,47 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    # Identifiants Basic Auth lus depuis des secrets fichiers (secrets/), jamais depuis un .env :
+    # un secret Docker est monté en lecture seule dans /run/secrets/, pas visible via
+    # `docker inspect` (contrairement à une variable d'environnement classique).
+    secrets:
+      - basic_auth_user
+      - basic_auth_hash
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        export BASIC_AUTH_USER="$$(cat /run/secrets/basic_auth_user)"
+        export BASIC_AUTH_HASH="$$(cat /run/secrets/basic_auth_hash)"
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "127.0.0.1:8087:8080"
+
+secrets:
+  basic_auth_user:
+    file: ./secrets/basic_auth_user
+  basic_auth_hash:
+    file: ./secrets/basic_auth_hash
+
+volumes:
+  caddy_data:
+  caddy_config:
