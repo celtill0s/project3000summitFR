@@ -180,14 +180,14 @@ function closeMobileList() {
   const app = document.getElementById('app');
   app.classList.remove('mobile-list-open');
   const btn = document.getElementById('mobile-list-toggle');
-  if (btn) btn.textContent = `📋 Liste (${PEAKS.filter(passesFullFilter).length})`;
+  if (btn) btn.textContent = `📋 Liste (${PEAKS.filter(passesBaseFilter).length})`;
 }
 
 function toggleMobileList() {
   const app = document.getElementById('app');
   const open = app.classList.toggle('mobile-list-open');
   const btn = document.getElementById('mobile-list-toggle');
-  btn.textContent = open ? '✕ Fermer' : `📋 Liste (${PEAKS.filter(passesFullFilter).length})`;
+  btn.textContent = open ? '✕ Fermer' : `📋 Liste (${PEAKS.filter(passesBaseFilter).length})`;
 }
 
 function initMobileList() {
@@ -328,6 +328,7 @@ const STATUSES = ['Tous', 'Fait', 'À faire'];
 
 const state = {
   regions: new Set(REGIONS),
+  difficulties: new Set(DIFFS),
   status: 'Tous',
   query: ''
 };
@@ -338,14 +339,19 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 }).addTo(map);
 
-// Un calque Leaflet par niveau de difficulté (cotation CAS/SAC) — activables/désactivables
-// indépendamment via le sélecteur de calques natif (en haut à droite) ou les puces de la barre latérale.
-const diffLayers = {
-  T2: L.layerGroup(),
-  T3: L.layerGroup(),
-  T4: L.layerGroup()
-};
-DIFFS.forEach(d => diffLayers[d].addTo(map)); // tous visibles par défaut
+// Groupe de clustering unique (toutes difficultés mélangées) : au dézoom, les sommets proches
+// se regroupent sous un seul logo montagne avec le nombre total de sommets du secteur ; au
+// zoom, ils se "séparent" progressivement en marqueurs individuels (comportement natif du
+// plugin Leaflet.markercluster). Le filtre par difficulté (puces + ancien calque natif) agit
+// maintenant en ajoutant/retirant les marqueurs de CE groupe plutôt qu'en togglant un calque —
+// voir passesBaseFilter/syncMarkers.
+const peaksCluster = L.markerClusterGroup({
+  iconCreateFunction: (cluster) => clusterIcon(cluster.getChildCount()),
+  maxClusterRadius: 28, // rayon réduit (défaut Leaflet : 80) — se sépare beaucoup plus tôt au zoom
+  disableClusteringAtZoom: 11, // au-delà, toujours des marqueurs individuels, plus aucun regroupement
+  spiderfyOnMaxZoom: true,
+  showCoverageOnHover: false
+}).addTo(map);
 
 // Calque dédié aux traces GPX importées (itinéraires de rando par sommet).
 const gpxLayer = L.layerGroup().addTo(map);
@@ -354,12 +360,10 @@ const gpxLayer = L.layerGroup().addTo(map);
 // .leaflet-control-layers-toggle), toujours déplié sur desktop comme avant. Déterminé une
 // seule fois au chargement : le mode replié/déplié de Leaflet se fixe à la création du
 // contrôle, pas dynamiquement — cohérent avec un usage réel (on ne redimensionne pas son
-// navigateur au-delà du seuil de 760px en cours d'usage).
+// navigateur au-delà du seuil de 760px en cours d'usage). Ne reste plus que la trace GPX ici,
+// la difficulté étant désormais gérée par les puces de la barre latérale (voir plus haut).
 const startsMobile = window.matchMedia('(max-width: 760px)').matches;
 const layersControl = L.control.layers(null, {
-  [`<span style="color:${DIFF_COLORS.T2}">&#9679;</span> ${DIFF_LABELS.T2}`]: diffLayers.T2,
-  [`<span style="color:${DIFF_COLORS.T3}">&#9679;</span> ${DIFF_LABELS.T3}`]: diffLayers.T3,
-  [`<span style="color:${DIFF_COLORS.T4}">&#9679;</span> ${DIFF_LABELS.T4}`]: diffLayers.T4,
   '<span style="color:#1f5f8b">&#9473;</span> Traces GPX': gpxLayer
 }, { collapsed: startsMobile, position: startsMobile ? 'topleft' : 'topright' }).addTo(map);
 
@@ -660,13 +664,47 @@ function autosizeCommentTextarea(el, expanded) {
   return overflowsCollapsed;
 }
 
-function makeIcon(color, done) {
-  const check = done ? '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:900;">&#10003;</div>' : '';
+// Silhouette "montagne" (deux pointes) réutilisée pour les marqueurs individuels ET les
+// bulles de cluster, dans un viewBox 24x24.
+const MOUNTAIN_PATH = 'M2 20 L9 8 L13 14 L16 9 L22 20 Z';
+
+// Marqueur individuel : logo montagne colorié selon la difficulté (T2/T3/T4), coche verte en
+// haut à gauche si le sommet est fait, altitude en petit en bas à droite du logo.
+function makeIcon(color, done, altitudeM) {
+  const check = done ? '<div class="peak-icon-check">&#10003;</div>' : '';
+  const alt = altitudeM != null ? `<div class="peak-icon-alt">${altitudeM}</div>` : '';
   return L.divIcon({
     className: '',
-    html: `<div style="position:relative;width:16px;height:16px;border-radius:50%;background:${color};border:2px solid ${done ? '#1b3a2c' : '#fff'};box-shadow:0 0 0 1px rgba(0,0,0,.35);">${check}</div>`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8]
+    html: `<div class="peak-icon-wrap">
+      <svg viewBox="0 0 24 24" class="peak-icon-svg"><path d="${MOUNTAIN_PATH}" fill="${color}" stroke="${done ? '#1b3a2c' : '#fff'}" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      ${check}${alt}
+    </div>`,
+    iconSize: [34, 36],
+    iconAnchor: [17, 18]
+  });
+}
+
+// Bulle de cluster (dézoom) : même logo montagne, couleur neutre (mélange de difficultés),
+// avec le nombre total de sommets du secteur affiché par-dessus. Taille légèrement croissante
+// selon l'effectif du groupe, purement visuel.
+// Badge (rond + chiffre) dessiné DANS le même SVG que la montagne, peint après elle (donc
+// forcément au-dessus, sans dépendre d'un empilement CSS/HTML qui peut être perturbé par le
+// contexte d'empilement créé par le filter drop-shadow du logo).
+function clusterIcon(count) {
+  const size = count >= 25 ? 46 : count >= 10 ? 40 : 34;
+  const label = String(count);
+  const r = label.length > 2 ? 6.5 : 5.5; // un peu plus large pour 3 chiffres
+  const cx = 24 - r - 1;
+  const cy = 24 - r - 1;
+  return L.divIcon({
+    className: '',
+    html: `<svg viewBox="0 0 24 24" width="${size}" height="${size}" style="display:block; filter: drop-shadow(0 1px 3px rgba(0,0,0,.4));">
+      <path d="${MOUNTAIN_PATH}" fill="#2c5f4a" stroke="#1b3a2c" stroke-width="1.2" stroke-linejoin="round"/>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff" stroke="#1b3a2c" stroke-width="1.3"/>
+      <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-size="${label.length > 2 ? 6 : 7}" font-weight="800" fill="#1b3a2c">${label}</text>
+    </svg>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2]
   });
 }
 
@@ -703,13 +741,13 @@ function toggleDone(name) {
   const wasDone = doneSet.has(name);
   if (wasDone) doneSet.delete(name); else doneSet.add(name);
   const entry = markers.get(name);
-  if (entry) entry.marker.setIcon(makeIcon(DIFF_COLORS[entry.data.difficulty] || '#555', doneSet.has(name)));
+  if (entry) entry.marker.setIcon(makeIcon(DIFF_COLORS[entry.data.difficulty] || '#555', doneSet.has(name), entry.data.altitude_m));
   renderList();
   updateDoneCount();
   apiPost(`${peakApiBase(name)}/done`, { done: !wasDone }).catch(() => {
     // échec réseau : on annule l'affichage optimiste
     if (wasDone) doneSet.add(name); else doneSet.delete(name);
-    if (entry) entry.marker.setIcon(makeIcon(DIFF_COLORS[entry.data.difficulty] || '#555', doneSet.has(name)));
+    if (entry) entry.marker.setIcon(makeIcon(DIFF_COLORS[entry.data.difficulty] || '#555', doneSet.has(name), entry.data.altitude_m));
     renderList();
     updateDoneCount();
     alert("Impossible d'enregistrer sur le serveur — vérifie la connexion et réessaie.");
@@ -880,7 +918,7 @@ function initPeakPanel() {
 function buildMarkers() {
   PEAKS.forEach(p => {
     const color = DIFF_COLORS[p.difficulty] || '#555';
-    const marker = L.marker([p.lat, p.lon], { icon: makeIcon(color, doneSet.has(p.name)) });
+    const marker = L.marker([p.lat, p.lon], { icon: makeIcon(color, doneSet.has(p.name), p.altitude_m) });
     marker.on('click', () => openPeakPanel(p, marker));
     markers.set(p.name, { marker, data: p });
   });
@@ -911,10 +949,12 @@ function toggleRegion(v) {
   renderList();
 }
 
-function toggleDiffLayer(d) {
-  if (map.hasLayer(diffLayers[d])) map.removeLayer(diffLayers[d]);
-  else map.addLayer(diffLayers[d]);
-  // 'overlayadd'/'overlayremove' events below keep chips & list in sync
+function toggleDifficulty(v) {
+  if (state.difficulties.has(v)) state.difficulties.delete(v); else state.difficulties.add(v);
+  if (state.difficulties.size === 0) DIFFS.forEach(d => state.difficulties.add(d));
+  renderChipsAll();
+  syncMarkers();
+  renderList();
 }
 
 function setStatus(v) {
@@ -925,6 +965,7 @@ function setStatus(v) {
 
 function passesBaseFilter(p) {
   if (!state.regions.has(p.region)) return false;
+  if (!state.difficulties.has(p.difficulty)) return false;
   if (state.status === 'Fait' && !doneSet.has(p.name)) return false;
   if (state.status === 'À faire' && doneSet.has(p.name)) return false;
   if (state.query) {
@@ -934,13 +975,9 @@ function passesBaseFilter(p) {
   return true;
 }
 
-function passesFullFilter(p) {
-  return passesBaseFilter(p) && map.hasLayer(diffLayers[p.difficulty]);
-}
-
 function updateDoneCount() {
   const el = document.getElementById('count');
-  const visible = PEAKS.filter(passesFullFilter);
+  const visible = PEAKS.filter(passesBaseFilter);
   const doneVisible = visible.filter(p => doneSet.has(p.name)).length;
   el.textContent = `${visible.length} sommet${visible.length > 1 ? 's' : ''} affiché${visible.length > 1 ? 's' : ''} sur ${PEAKS.length} · ${doneSet.size} fait${doneSet.size > 1 ? 's' : ''} au total`;
   const toggleBtn = document.getElementById('mobile-list-toggle');
@@ -956,7 +993,7 @@ function renderList() {
   // dans chaque groupe ; en filtre "Fait"/"À faire" tous les éléments partagent déjà le même
   // statut, donc l'altitude seule suffit.
   const groupDoneFirst = state.status === 'Tous';
-  const filtered = PEAKS.filter(passesFullFilter).sort((a, b) => {
+  const filtered = PEAKS.filter(passesBaseFilter).sort((a, b) => {
     if (groupDoneFirst) {
       const doneDiff = (doneSet.has(b.name) ? 1 : 0) - (doneSet.has(a.name) ? 1 : 0);
       if (doneDiff !== 0) return doneDiff;
@@ -998,16 +1035,15 @@ function renderList() {
 
 function syncMarkers() {
   markers.forEach(({ marker, data }) => {
-    const group = diffLayers[data.difficulty];
     const show = passesBaseFilter(data);
-    if (show && !group.hasLayer(marker)) group.addLayer(marker);
-    if (!show && group.hasLayer(marker)) group.removeLayer(marker);
+    if (show && !peaksCluster.hasLayer(marker)) peaksCluster.addLayer(marker);
+    if (!show && peaksCluster.hasLayer(marker)) peaksCluster.removeLayer(marker);
   });
 }
 
 function renderChipsAll() {
   renderChips('region-chips', REGIONS, v => state.regions.has(v), v => v, null, toggleRegion);
-  renderChips('diff-chips', DIFFS, v => map.hasLayer(diffLayers[v]), v => v, v => DIFF_COLORS[v], toggleDiffLayer);
+  renderChips('diff-chips', DIFFS, v => state.difficulties.has(v), v => v, v => DIFF_COLORS[v], toggleDifficulty);
   renderChips('status-chips', STATUSES, v => state.status === v, v => v, null, setStatus);
 }
 
@@ -1022,24 +1058,60 @@ document.getElementById('search').addEventListener('input', e => {
   renderList();
 });
 
-// Légende (rappel des couleurs, calques activables via le contrôle en haut à droite ou les puces)
+// Légende (rappel des couleurs). Sur desktop : boîte fixe en bas à droite, comme avant. Sur
+// mobile : masquée en tant que contrôle séparé (une seule flèche voulue, pas deux) — son
+// contenu est plutôt fusionné dans le panneau du sélecteur de calques (voir
+// setupMobileLayersPanel), qui ouvre/ferme les deux à la fois.
+function legendContentHtml() {
+  return `
+    <div class="legend-title">Cotation randonnée</div>
+    ${DIFFS.map(d => `<div class="legend-row"><span class="legend-dot" style="background:${DIFF_COLORS[d]}"></span>${DIFF_LABELS[d]}</div>`).join('')}
+    <div class="legend-row" style="margin-top:6px;"><span style="color:#1b3a2c">&#10003;</span>&nbsp;Sommet fait</div>
+  `;
+}
+
 const legend = L.control({ position: 'bottomright' });
 legend.onAdd = function () {
   const div = L.DomUtil.create('div', '');
   div.id = 'legend';
-  div.innerHTML = `
-    <div class="title">Cotation randonnée</div>
-    ${DIFFS.map(d => `<div class="row"><span class="dot" style="background:${DIFF_COLORS[d]}"></span>${DIFF_LABELS[d]}</div>`).join('')}
-    <div class="row" style="margin-top:6px;"><span style="color:${'#1b3a2c'}">&#10003;</span>&nbsp;Sommet fait</div>
-  `;
+  div.innerHTML = legendContentHtml();
+  L.DomEvent.disableClickPropagation(div);
   return div;
 };
 legend.addTo(map);
+
+// Une seule flèche sur mobile (celle du sélecteur de calques) : on y ajoute la légende + un
+// vrai bouton "fermer" visible (Leaflet masque son propre bouton une fois le panneau ouvert,
+// sans offrir de moyen de le refermer autrement qu'en tapant ailleurs sur la carte).
+function setupMobileLayersPanel() {
+  if (!startsMobile) return;
+  const container = layersControl.getContainer();
+  if (!container) return;
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'leaflet-control-layers-close';
+  closeBtn.setAttribute('aria-label', 'Fermer');
+  closeBtn.textContent = '✕';
+  closeBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    layersControl.collapse();
+  });
+  container.insertBefore(closeBtn, container.firstChild);
+
+  const list = container.querySelector('.leaflet-control-layers-list') || container;
+  const legendBlock = document.createElement('div');
+  legendBlock.className = 'legend-in-layers';
+  legendBlock.innerHTML = legendContentHtml();
+  list.appendChild(legendBlock);
+}
 
 initPeakPanel();
 initLightbox();
 initCramponView();
 initMobileList();
+setupMobileLayersPanel();
 applyResponsiveControlPositions();
 window.addEventListener('resize', applyResponsiveControlPositions);
 
