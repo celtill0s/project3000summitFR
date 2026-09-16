@@ -37,6 +37,10 @@ MAX_IMAGE_BYTES = 25 * 1024 * 1024
 MAX_VIDEO_BYTES = 500 * 1024 * 1024
 MAX_GPX_BYTES = 20 * 1024 * 1024
 MAX_JSON_BYTES = 256 * 1024
+# Extensions autorisées pour le service de fichiers statiques génériques (style.css, app.js…) —
+# whitelist explicite plutôt que "tout ce qui n'est pas une route API", pour ne jamais exposer
+# par erreur un fichier qui traînerait dans static/ (ex. un .py ou un .bak).
+STATIC_ASSET_EXTS = {".css", ".js", ".png", ".jpg", ".jpeg", ".svg", ".ico"}
 
 mimetypes.add_type("application/gpx+xml", ".gpx")
 
@@ -176,6 +180,9 @@ class Handler(BaseHTTPRequestHandler):
             elif path.startswith("/gpx/"):
                 rel = unquote(path[len("/gpx/"):])
                 self._file(self._safe_rel_path(GPX_DIR, rel), cache=False)
+            elif Path(unquote(path)).suffix.lower() in STATIC_ASSET_EXTS:
+                rel = unquote(path).lstrip("/")
+                self._file(self._safe_rel_path(STATIC_DIR, rel))
             else:
                 self._json(404, {"error": "not found"})
         except ValueError:
