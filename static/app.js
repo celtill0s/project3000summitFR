@@ -715,7 +715,7 @@ function popupHtml(p) {
   const checked = doneSet.has(p.name) ? 'checked' : '';
   return `
     <h3>${p.name}</h3>
-    <div class="pop-meta">${p.altitude_m} m &middot; ${p.massif} &middot; ${p.region}</div>
+    <div class="pop-meta">${p.altitude_m} m &middot; ${p.massif} &middot; ${p.region} &middot; <a href="https://www.google.com/maps?q=${p.lat},${p.lon}" target="_blank" rel="noopener noreferrer">Voir sur Google Maps</a></div>
     <span class="badge" style="background:${color}">${p.difficulty}</span>
     <div class="pop-notes">${p.notes}</div>
     <div class="pop-source">Source : ${p.source}</div>
