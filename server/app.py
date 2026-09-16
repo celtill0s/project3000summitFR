@@ -182,10 +182,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._file(self._safe_rel_path(GPX_DIR, rel), cache=False)
             elif Path(unquote(path)).suffix.lower() in STATIC_ASSET_EXTS:
                 rel = unquote(path).lstrip("/")
-                # cache=False : ce sont exactement les fichiers qu'on modifie sans arrêt en ce
-                # moment (style.css/app.js) — un cache navigateur ici ferait croire à des
-                # changements "qui ne marchent pas" alors que c'est juste une version périmée.
-                self._file(self._safe_rel_path(STATIC_DIR, rel), cache=False)
+                self._file(self._safe_rel_path(STATIC_DIR, rel))
             else:
                 self._json(404, {"error": "not found"})
         except ValueError:
