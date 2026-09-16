@@ -450,6 +450,42 @@ html, body { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystem
 @media (max-width: 760px) {
   .crampon-row, .crampon-row.head { grid-template-columns: 1fr; }
 }
+
+/* Marqueurs "montagne" (remplacent les ronds de couleur) + bulles de cluster — voir
+   makeIcon()/clusterIcon() dans app.js. */
+.peak-icon-wrap { position: relative; width: 34px; height: 36px; }
+.peak-icon-svg { position: absolute; top: 0; left: 2px; width: 30px; height: 30px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
+.peak-icon-check {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #1b3a2c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 1.5px #fff;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+}
+.peak-icon-alt {
+  position: absolute;
+  bottom: 0;
+  right: -4px;
+  font-size: 8px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(20,20,20,.68);
+  padding: 0 3px;
+  border-radius: 3px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
 #legend {
   position: absolute;
   bottom: 18px;
@@ -462,9 +498,15 @@ html, body { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystem
   box-shadow: 0 2px 8px rgba(0,0,0,.08);
   z-index: 500;
 }
-#legend .title { font-weight: 700; margin-bottom: 6px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
-#legend .row { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; }
-#legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.2); }
+.legend-title { font-weight: 700; margin-bottom: 6px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+.legend-row { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.2); }
+
+@media (max-width: 760px) {
+  /* Contrôle séparé masqué sur mobile : son contenu est fusionné dans le panneau du
+     sélecteur de calques (une seule flèche, voir .legend-in-layers plus bas). */
+  #legend { display: none; }
+}
 
 #mobile-list-toggle { display: none; }
 
@@ -527,7 +569,33 @@ html, body { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystem
     font-size: 13px;
   }
   .leaflet-control-layers-expanded {
+    position: relative;
     border-radius: 8px;
     box-shadow: 0 4px 14px rgba(0,0,0,.2);
+    padding-top: 24px; /* place pour le bouton fermer */
+    max-width: 220px;
+  }
+  /* Bouton "fermer" ajouté en JS (setupMobileLayersPanel) : Leaflet masque son propre bouton
+     flèche une fois le panneau déplié, sans laisser d'autre moyen visible de le refermer que
+     de taper ailleurs sur la carte — on ajoute donc notre propre affordance explicite. */
+  .leaflet-control-layers-close {
+    display: none;
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    background: none;
+    border: none;
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+    line-height: 1;
+    padding: 3px;
+  }
+  .leaflet-control-layers-expanded .leaflet-control-layers-close { display: block; }
+  /* Légende fusionnée ici (une seule flèche sur mobile plutôt que deux contrôles séparés). */
+  .legend-in-layers {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
   }
 }
