@@ -23,11 +23,13 @@ services:
     secrets:
       - basic_auth_user
       - basic_auth_hash
+      - operator_hash
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
         export BASIC_AUTH_USER="$$(cat /run/secrets/basic_auth_user)"
         export BASIC_AUTH_HASH="$$(cat /run/secrets/basic_auth_hash)"
+        export OPERATOR_HASH="$$(cat /run/secrets/operator_hash)"
         exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -41,6 +43,8 @@ secrets:
     file: ./secrets/basic_auth_user
   basic_auth_hash:
     file: ./secrets/basic_auth_hash
+  operator_hash:
+    file: ./secrets/operator_hash
 
 volumes:
   caddy_data:
