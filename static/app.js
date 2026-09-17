@@ -670,17 +670,24 @@ const MOUNTAIN_PATH = 'M2 20 L9 8 L13 14 L16 9 L22 20 Z';
 
 // Marqueur individuel : logo montagne colorié selon la difficulté (T2/T3/T4), coche verte en
 // haut à gauche si le sommet est fait, altitude en petit en bas à droite du logo.
+// Plus grand sur PC (espace disponible, pas de doigt qui masque le point) qu'en mobile.
+const PEAK_ICON_SCALE = startsMobile ? 1 : 1.4;
 function makeIcon(color, done, altitudeM) {
-  const check = done ? '<div class="peak-icon-check">&#10003;</div>' : '';
-  const alt = altitudeM != null ? `<div class="peak-icon-alt">${altitudeM}</div>` : '';
+  const s = PEAK_ICON_SCALE;
+  const w = Math.round(34 * s), h = Math.round(36 * s);
+  const svgSize = Math.round(30 * s), svgLeft = Math.round(2 * s);
+  const checkSize = Math.round(13 * s), checkFont = Math.round(9 * s), checkOff = Math.round(-2 * s);
+  const altFont = Math.round(8 * s);
+  const check = done ? `<div class="peak-icon-check" style="width:${checkSize}px;height:${checkSize}px;top:${checkOff}px;left:${checkOff}px;font-size:${checkFont}px;">&#10003;</div>` : '';
+  const alt = altitudeM != null ? `<div class="peak-icon-alt" style="font-size:${altFont}px;">${altitudeM}</div>` : '';
   return L.divIcon({
     className: '',
-    html: `<div class="peak-icon-wrap">
-      <svg viewBox="0 0 24 24" class="peak-icon-svg"><path d="${MOUNTAIN_PATH}" fill="${color}" stroke="${done ? '#1b3a2c' : '#fff'}" stroke-width="1.4" stroke-linejoin="round"/></svg>
+    html: `<div class="peak-icon-wrap" style="width:${w}px;height:${h}px;">
+      <svg viewBox="0 0 24 24" class="peak-icon-svg" style="width:${svgSize}px;height:${svgSize}px;left:${svgLeft}px;"><path d="${MOUNTAIN_PATH}" fill="${color}" stroke="${done ? '#1b3a2c' : '#fff'}" stroke-width="1.4" stroke-linejoin="round"/></svg>
       ${check}${alt}
     </div>`,
-    iconSize: [34, 36],
-    iconAnchor: [17, 18]
+    iconSize: [w, h],
+    iconAnchor: [w / 2, h / 2]
   });
 }
 
@@ -691,7 +698,7 @@ function makeIcon(color, done, altitudeM) {
 // forcément au-dessus, sans dépendre d'un empilement CSS/HTML qui peut être perturbé par le
 // contexte d'empilement créé par le filter drop-shadow du logo).
 function clusterIcon(count) {
-  const size = count >= 25 ? 46 : count >= 10 ? 40 : 34;
+  const size = Math.round((count >= 25 ? 46 : count >= 10 ? 40 : 34) * PEAK_ICON_SCALE);
   const label = String(count);
   const r = label.length > 2 ? 6.5 : 5.5; // un peu plus large pour 3 chiffres
   const cx = 24 - r - 1;
