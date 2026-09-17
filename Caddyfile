@@ -1,6 +1,17 @@
 :8080 {
 	basic_auth {
 		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+		operator {$OPERATOR_HASH}
 	}
+
+	# "operator" est en lecture seule : on bloque toute requête d'écriture (POST = coché/
+	# commentaire/upload photo, DELETE = suppression photo) faite sous cette identité, avant
+	# même qu'elle n'atteigne l'appli.
+	@operator_write {
+		expression {http.auth.user.id} == "operator"
+		method POST DELETE
+	}
+	respond @operator_write "Lecture seule" 403
+
 	reverse_proxy app:8000
 }
