@@ -486,6 +486,19 @@ html, body { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystem
   white-space: nowrap;
 }
 
+/* Bouton "Voir tous" (éclate tous les agglomérats en sommets individuels) — contrôle Leaflet
+   avec du texte, donc plus large que les boutons carrés par défaut (zoom, etc.). */
+.separate-all-control a {
+  width: auto !important;
+  height: auto !important;
+  line-height: normal !important;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #1b3a2c;
+}
+
 #legend {
   position: absolute;
   bottom: 18px;

@@ -356,6 +356,62 @@ const peaksCluster = L.markerClusterGroup({
 // Calque dédié aux traces GPX importées (itinéraires de rando par sommet).
 const gpxLayer = L.layerGroup().addTo(map);
 
+// Bouton "Voir tous" : bascule tous les sommets actuellement affichés vers leur VRAIE position
+// individuelle (plus aucun regroupement), sans toucher au zoom/à la vue en cours. Groupé par
+// défaut ; reste à l'état choisi (y compris si les filtres changent, voir syncMarkers) jusqu'au
+// clic sur "Regrouper".
+const individualLayer = L.layerGroup();
+let allSeparated = false;
+
+function separateAllPeaks() {
+  if (allSeparated) return;
+  markers.forEach(({ marker, data }) => {
+    if (!passesBaseFilter(data)) return;
+    if (peaksCluster.hasLayer(marker)) peaksCluster.removeLayer(marker);
+    individualLayer.addLayer(marker);
+  });
+  if (!map.hasLayer(individualLayer)) individualLayer.addTo(map);
+  allSeparated = true;
+  updateSeparateAllButton();
+}
+
+function regroupAllPeaks() {
+  if (!allSeparated) return;
+  markers.forEach(({ marker, data }) => {
+    if (individualLayer.hasLayer(marker)) individualLayer.removeLayer(marker);
+    if (passesBaseFilter(data)) peaksCluster.addLayer(marker);
+  });
+  map.removeLayer(individualLayer);
+  allSeparated = false;
+  updateSeparateAllButton();
+}
+
+function toggleSeparateAllPeaks() {
+  if (allSeparated) regroupAllPeaks(); else separateAllPeaks();
+}
+
+let separateAllBtnEl = null;
+function updateSeparateAllButton() {
+  if (!separateAllBtnEl) return;
+  separateAllBtnEl.textContent = allSeparated ? '✕ Regrouper' : '⇲ Voir tous';
+  separateAllBtnEl.title = allSeparated
+    ? 'Réafficher les regroupements par zone'
+    : 'Afficher tous les sommets individuellement, à leur position réelle';
+}
+
+const separateAllControl = L.control({ position: 'topleft' });
+separateAllControl.onAdd = function () {
+  const div = L.DomUtil.create('div', 'leaflet-bar separate-all-control');
+  const btn = L.DomUtil.create('a', '', div);
+  btn.href = '#';
+  separateAllBtnEl = btn;
+  updateSeparateAllButton();
+  L.DomEvent.disableClickPropagation(div);
+  L.DomEvent.on(btn, 'click', L.DomEvent.stop).on(btn, 'click', toggleSeparateAllPeaks);
+  return div;
+};
+separateAllControl.addTo(map);
+
 // Replié par défaut sur mobile (petit bouton natif Leaflet, stylé en flèche via CSS — voir
 // .leaflet-control-layers-toggle), toujours déplié sur desktop comme avant. Déterminé une
 // seule fois au chargement : le mode replié/déplié de Leaflet se fixe à la création du
@@ -1041,10 +1097,14 @@ function renderList() {
 }
 
 function syncMarkers() {
+  // Respecte l'état "éclaté"/"groupé" choisi via le bouton Voir tous/Regrouper : un changement
+  // de filtre ne doit pas le réinitialiser, juste ajuster quels sommets sont visibles dans le
+  // calque actif.
+  const activeLayer = allSeparated ? individualLayer : peaksCluster;
   markers.forEach(({ marker, data }) => {
     const show = passesBaseFilter(data);
-    if (show && !peaksCluster.hasLayer(marker)) peaksCluster.addLayer(marker);
-    if (!show && peaksCluster.hasLayer(marker)) peaksCluster.removeLayer(marker);
+    if (show && !activeLayer.hasLayer(marker)) activeLayer.addLayer(marker);
+    if (!show && activeLayer.hasLayer(marker)) activeLayer.removeLayer(marker);
   });
 }
 
