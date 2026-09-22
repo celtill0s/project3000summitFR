@@ -40,7 +40,7 @@
     "altitude_m": 3293,
     "lat": 44.8496,
     "lon": 6.8816,
-    "massif": "Queyras",
+    "massif": "Queyras (frontière)",
     "region": "Alpes",
     "difficulty": "T3",
     "notes": "Depuis Aiguilles, à la frontière italienne.",
@@ -250,6 +250,18 @@
     "notes": "Point culminant des Alpes-de-Haute-Provence, longue rando depuis Allos.",
     "source": "altituderando.com",
     "source_url": "https://www.altituderando.com/Mont-Pelat-3051m-en-boucle-par"
+  },
+  {
+    "name": "Mont Clapier",
+    "altitude_m": 3045,
+    "lat": 44.11611,
+    "lon": 7.41917,
+    "massif": "Mercantour (frontière)",
+    "region": "Alpes",
+    "difficulty": "T3",
+    "notes": "Sommet le plus méridional des Alpes à plus de 3000m, exactement sur la frontière franco-italienne. Depuis Pont du Countet (Belvédère) par le Refuge de Nice et les lacs du Mont Clapier ; aucun passage d'escalade, de via ferrata ni de glacier, mais éboulis instables et cairns peu fiables sur la fin, bon sens de l'orientation requis.",
+    "source": "altituderando.com",
+    "source_url": "https://www.altituderando.com/Mont-Clapier-3045m"
   },
   {
     "name": "Pointe d'Escreins",
