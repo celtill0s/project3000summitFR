@@ -161,6 +161,8 @@ d'une suppression accidentelle, pas d'une panne matérielle. Copie
   (sommets faits/commentaires/références photos-vidéos-gpx, indexés par
   `id` de sommet), `photos/<id>/`, `gpx/<id>.gpx`, `thumbs/` (miniatures,
   régénérables : inutile de les sauvegarder).
+- **`android/`** — l'appli Android (voir `android/README.md`), construite et
+  publiée par `.github/workflows/release.yml` à chaque tag `vX.Y.Z`.
 - **`sources.md`** — méthodologie complète : comment chaque sommet a été
   sélectionné, comment sa cotation a été déterminée, sources utilisées et
   limites connues (inclut l'audit critique du 2026-09-01).
@@ -193,6 +195,11 @@ d'une suppression accidentelle, pas d'une panne matérielle. Copie
   sommets, les photos et les tuiles de carte déjà affichées (3 000 max).
   Hors-ligne, les modifications (coché, commentaire, upload) échouent avec
   un message : elles ne sont pas mises en attente.
+- **Appli Android (APK)** : alternative à la PWA qui ne dépend d'aucun
+  navigateur, avec écran de connexion (identifiants Basic Auth, mémorisés
+  chiffrés). Téléchargeable depuis les **Releases** GitHub ; voir
+  [`android/README.md`](android/README.md) pour l'installation et la
+  publication d'une nouvelle version.
 - **Filtres** : par massif (Alpes/Pyrénées), par difficulté, par statut
   (fait / à faire), et recherche texte libre (nom, massif).
 - **Suivi "sommet fait"**, **commentaire personnel**, **photos et

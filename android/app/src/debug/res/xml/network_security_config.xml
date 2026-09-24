@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Builds de debug uniquement : HTTP autorisé vers localhost, pour tester l'appli contre une
+     instance locale (adb reverse tcp:8080 tcp:8080). Jamais dans l'APK de release. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

@@ -1,0 +1,93 @@
+name: Release APK
+
+# Pousser un tag construit l'appli Android, la signe et l'attache à une Release GitHub :
+# - vX.Y.Z-beta.N (sur devel) → pré-version, pour tester avant de fusionner dans main ;
+# - vX.Y.Z (sur main)         → version finale.
+# Configuration (clé de signature, secrets) : android/README.md.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # création de la Release
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version depuis le tag
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          invalid() {
+            echo "::error::Tag « $GITHUB_REF_NAME » invalide : attendu vX.Y.Z ou vX.Y.Z-beta.N (Y, Z ≤ 99 ; N de 1 à 98)"
+            exit 1
+          }
+          [[ "$V" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-beta\.([0-9]+))?$ ]] || invalid
+          (( 10#${BASH_REMATCH[2]} <= 99 && 10#${BASH_REMATCH[3]} <= 99 )) || invalid
+          if [[ -n "${BASH_REMATCH[5]}" ]]; then
+            (( 10#${BASH_REMATCH[5]} >= 1 && 10#${BASH_REMATCH[5]} <= 98 )) || invalid
+          fi
+          # versionCode Android (entier qui doit croître à chaque mise à jour) :
+          #   1.2.3-beta.4 → 1020304, 1.2.3 → 1020399 (la finale passe après toutes ses bêtas),
+          #   1.2.4-beta.1 → 1020401 (au-dessus de 1.2.3).
+          BASE=$(( 10#${BASH_REMATCH[1]} * 10000 + 10#${BASH_REMATCH[2]} * 100 + 10#${BASH_REMATCH[3]} ))
+          if [[ -n "${BASH_REMATCH[5]}" ]]; then
+            SUFFIX=$(( 10#${BASH_REMATCH[5]} )); PRERELEASE=true
+          else
+            SUFFIX=99; PRERELEASE=false
+          fi
+          echo "VERSION_NAME=$V" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$(( BASE * 100 + SUFFIX ))" >> "$GITHUB_ENV"
+          echo "PRERELEASE=$PRERELEASE" >> "$GITHUB_ENV"
+
+      - name: Clé de signature
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          # Sans clé, Gradle produirait un APK non signé, impossible à installer : on s'arrête net.
+          for v in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then echo "::error::Secret ANDROID_$v manquant (voir android/README.md)"; exit 1; fi
+          done
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build de l'APK signé
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # Adresse préremplie sur l'écran de connexion : variable de dépôt DEFAULT_SERVER_URL
+          # (Settings → Variables), sinon la valeur par défaut de android/app/build.gradle.kts.
+          DEFAULT_SERVER_URL: ${{ vars.DEFAULT_SERVER_URL }}
+        run: |
+          ./gradlew assembleRelease --console=plain \
+            -PappVersionName="$VERSION_NAME" -PappVersionCode="$VERSION_CODE" \
+            ${DEFAULT_SERVER_URL:+-PdefaultServerUrl="$DEFAULT_SERVER_URL"}
+
+      - name: Vérification de la signature
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs "$APK"
+          cp "$APK" "sommets3000-$VERSION_NAME.apk"
+
+      - name: Release GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Sommets 3000 ${{ env.VERSION_NAME }}
+          prerelease: ${{ env.PRERELEASE == 'true' }}
+          files: sommets3000-${{ env.VERSION_NAME }}.apk
+          generate_release_notes: true
+          body: |
+            **Installation sur Android** : télécharger `sommets3000-${{ env.VERSION_NAME }}.apk` ci-dessous et l'ouvrir sur le téléphone (autoriser l'installation d'applis de sources inconnues pour le navigateur ou le gestionnaire de fichiers). Une nouvelle version s'installe par-dessus l'ancienne, sans perdre la connexion.

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sommets 3000</string>
+    <string name="login_title">Sommets de plus de 3000 m</string>
+    <string name="login_subtitle">Connecte-toi à ton instance avec les identifiants du site.</string>
+    <string name="server_url">Adresse du serveur</string>
+    <string name="username">Identifiant</string>
+    <string name="password">Mot de passe</string>
+    <string name="login">Se connecter</string>
+    <string name="error_url">Adresse invalide : elle doit commencer par https://</string>
+    <string name="error_empty">Renseigne l\'identifiant et le mot de passe.</string>
+    <string name="error_credentials">Identifiant ou mot de passe incorrect.</string>
+    <string name="error_not_this_app">Ce serveur ne répond pas comme une instance Sommets 3000. Vérifie l\'adresse.</string>
+    <string name="error_network">Serveur injoignable. Vérifie l\'adresse et ta connexion.</string>
+    <string name="error_storage">Impossible d\'enregistrer les identifiants sur cet appareil.</string>
+    <string name="error_rejected">Le serveur a refusé les identifiants enregistrés (mot de passe changé ?). Reconnecte-toi.</string>
+    <string name="error_no_app">Aucune application pour ouvrir ce lien.</string>
+    <string name="logged_out">Déconnecté.</string>
+    <string name="file_saved">%1$s enregistré dans Téléchargements</string>
+</resources>

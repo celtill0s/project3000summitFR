@@ -4,6 +4,7 @@ import { applyResponsiveControlPositions, buildMarkers, setupMobileLayersPanel, 
 import { initLightbox } from './lightbox.js';
 import { initCramponView } from './crampon.js';
 import { initLocateControl } from './locate.js';
+import { initAppBridge } from './app-bridge.js';
 import { loadAllGpx } from './gpx.js';
 import { initPeakPanel } from './panel.js';
 import { initSidebar, renderChipsAll, renderList } from './sidebar.js';
@@ -14,6 +15,7 @@ initCramponView();
 initSidebar();
 setupMobileLayersPanel();
 initLocateControl();
+initAppBridge();
 applyResponsiveControlPositions();
 window.addEventListener('resize', applyResponsiveControlPositions);
 

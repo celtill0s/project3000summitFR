@@ -4,6 +4,7 @@ import { PEAKS } from './store.js';
 import { apiDelete, apiUpload, peakApiBase } from './api.js';
 import { gpxLayer, map } from './map.js';
 import { activePeakName } from './panel.js';
+import { nativeApp, saveFileNatively } from './app-bridge.js';
 
 // --- GPX : uploadée vers le serveur, servie ensuite depuis /gpx/<id>.gpx (une seule source de
 // vérité, plus de distinction "importé en local" vs "fourni par le dépôt"). ---
@@ -148,6 +149,10 @@ function drawGpxForPeak(p, gpxText) {
 function downloadGpx(p) {
   const text = gpxRawText.get(p.name);
   if (!text) return;
+  if (nativeApp) {
+    saveFileNatively(`${p.id}.gpx`, 'application/gpx+xml', text);
+    return;
+  }
   const blob = new Blob([text], { type: 'application/gpx+xml' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
