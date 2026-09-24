@@ -6,6 +6,16 @@ services:
       - ./data:/data
     expose:
       - "8000"
+    # Conteneur verrouillé : système de fichiers en lecture seule (sauf data/ et /tmp), aucun
+    # privilège Linux, pas d'élévation possible. Une éventuelle faille ne pourrait ni modifier le
+    # code ni sortir de data/.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
       interval: 30s
@@ -18,34 +28,14 @@ services:
     depends_on:
       app:
         condition: service_healthy
-    # Identifiants Basic Auth lus depuis des secrets fichiers (secrets/), jamais depuis un .env :
-    # un secret Docker est monté en lecture seule dans /run/secrets/, pas visible via
-    # `docker inspect` (contrairement à une variable d'environnement classique).
-    secrets:
-      - basic_auth_user
-      - basic_auth_hash
-      - operator_hash
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        export BASIC_AUTH_USER="$$(cat /run/secrets/basic_auth_user)"
-        export BASIC_AUTH_HASH="$$(cat /run/secrets/basic_auth_hash)"
-        export OPERATOR_HASH="$$(cat /run/secrets/operator_hash)"
-        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     ports:
       - "127.0.0.1:8087:8080"
-
-secrets:
-  basic_auth_user:
-    file: ./secrets/basic_auth_user
-  basic_auth_hash:
-    file: ./secrets/basic_auth_hash
-  operator_hash:
-    file: ./secrets/operator_hash
 
 volumes:
   caddy_data:

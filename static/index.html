@@ -22,7 +22,16 @@
       <h1>Sommets de plus de 3000 m</h1>
       <div class="subtitle">Alpes françaises &amp; Pyrénées &mdash; accessibles à pied, sans matériel d'alpinisme (pas de glacier obligatoire, pas de corde, pas de via ferrata). Cotation randonnée CAS/SAC indicative (T2 à T4).</div>
       <button type="button" id="crampon-view-open" class="crampon-view-open-btn">❄️ Vue crampons/piolet (POC)</button>
+      <!-- Compte connecté (js/account.js) -->
+      <div id="account-bar" hidden>
+        <span id="account-name"></span>
+        <button type="button" id="account-password" class="crampon-view-open-btn">🔑 Mot de passe</button>
+        <button type="button" id="admin-open" class="crampon-view-open-btn" hidden>👥 Utilisateurs</button>
+        <button type="button" id="account-logout" class="crampon-view-open-btn">Se déconnecter</button>
+      </div>
     </header>
+    <!-- Admin consultant l'espace d'un autre utilisateur -->
+    <div id="space-banner" hidden>👁 Espace de <strong id="space-banner-name"></strong> — lecture seule · <a href="/">Revenir à mon espace</a></div>
     <div id="controls">
       <input id="search" type="text" placeholder="Rechercher un sommet, un massif…" />
       <div class="filter-group">
@@ -33,11 +42,11 @@
         <div class="label">Difficulté (cotation randonnée, calques)</div>
         <div class="chips" id="diff-chips"></div>
       </div>
-      <div class="filter-group">
+      <div class="filter-group personal-only">
         <div class="label">Statut</div>
         <div class="chips" id="status-chips"></div>
       </div>
-      <div class="filter-group">
+      <div class="filter-group personal-only">
         <div class="label">Sauvegarde</div>
         <div style="font-size:11px;color:var(--muted);line-height:1.4;">Coché, commentaires, photos/vidéos et traces GPX sont enregistrés directement sur le serveur — rien à exporter ni à importer.</div>
       </div>
@@ -70,6 +79,50 @@
      glace, pas de corde) hors de leur fenêtre "randonnée normale", avec le grade alpin quand
      il a pu être confirmé sur camptocamp.org. Données : champ "crampon" des sommets concernés
      dans static/mountains.json. -->
+<!-- Changement de son propre mot de passe (js/account.js) -->
+<div id="password-dialog" class="modal" hidden>
+  <form id="password-form" class="modal-box">
+    <h2>Changer mon mot de passe</h2>
+    <label>Mot de passe actuel<input type="password" id="pw-current" autocomplete="current-password" required></label>
+    <label>Nouveau mot de passe (10 caractères minimum)<input type="password" id="pw-new" autocomplete="new-password" minlength="10" required></label>
+    <label>Confirmation<input type="password" id="pw-confirm" autocomplete="new-password" minlength="10" required></label>
+    <div class="modal-status" id="pw-status"></div>
+    <div class="modal-actions">
+      <button type="button" id="pw-cancel" class="btn-secondary">Annuler</button>
+      <button type="submit" class="btn-primary">Enregistrer</button>
+    </div>
+  </form>
+</div>
+
+<!-- Gestion des utilisateurs, administrateurs uniquement (js/admin.js) -->
+<div id="admin-view" hidden>
+  <div id="admin-view-header">
+    <h2>Utilisateurs</h2>
+    <button type="button" id="admin-view-close" aria-label="Fermer">&#10005;</button>
+  </div>
+  <div id="admin-view-body">
+    <form id="admin-create" class="admin-card">
+      <h3>Ajouter un utilisateur</h3>
+      <div class="admin-create-fields">
+        <label>Identifiant<input id="new-username" autocomplete="off" pattern="[a-z0-9][a-z0-9_\-]{1,31}" title="2 à 32 caractères : minuscules, chiffres, - ou _" required></label>
+        <label>Mot de passe provisoire<span class="admin-pw-row"><input id="new-password" autocomplete="new-password" minlength="10" required><button type="button" id="new-password-generate" class="btn-secondary" title="Générer un mot de passe">🎲</button></span></label>
+        <label>Rôle<select id="new-role">
+          <option value="member" selected>Membre — son propre espace</option>
+          <option value="guest">Invité — catalogue seul</option>
+          <option value="admin">Administrateur</option>
+        </select></label>
+      </div>
+      <div class="modal-status" id="admin-create-status"></div>
+      <button type="submit" class="btn-primary">Créer le compte</button>
+    </form>
+    <div class="admin-card">
+      <h3>Comptes</h3>
+      <div class="modal-status" id="admin-list-status"></div>
+      <div id="admin-users"></div>
+    </div>
+  </div>
+</div>
+
 <div id="crampon-view" hidden>
   <div id="crampon-view-header">
     <h2>Sommets accessibles crampons + piolet (hors saison normale)</h2>

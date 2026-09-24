@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connexion — Sommets &gt; 3000 m</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#1b3a2c" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="stylesheet" href="style.css">
+</head>
+<body id="login-page">
+<main class="login-box">
+  <img src="icons/icon-192.png" alt="" class="login-logo" width="88" height="88">
+  <h1>Sommets de plus de 3000 m</h1>
+  <p class="login-subtitle">Alpes françaises &amp; Pyrénées — connecte-toi pour accéder à la carte.</p>
+  <form id="login-form">
+    <label>Identifiant<input id="login-username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></label>
+    <label>Mot de passe<input id="login-password" type="password" autocomplete="current-password" required></label>
+    <div id="login-status" class="modal-status" role="alert"></div>
+    <button type="submit" class="btn-primary" id="login-submit">Se connecter</button>
+  </form>
+  <p class="login-help">Pas de compte ? Demande-le à l'administrateur du site.</p>
+</main>
+<script type="module" src="js/login.js"></script>
+</body>
+</html>

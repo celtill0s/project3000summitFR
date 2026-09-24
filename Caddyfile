@@ -1,17 +1,21 @@
+# Caddy : relais devant l'appli Python (qui gère elle-même les comptes et les sessions).
+# Il ne vérifie plus de mot de passe, mais protège le petit serveur Python, qui n'est pas fait
+# pour être exposé seul : délais d'expiration (coupe les connexions volontairement lentes),
+# taille maximale des requêtes, HTTP propre.
+{
+	servers {
+		timeouts {
+			read_header 10s
+			idle 2m
+		}
+	}
+}
+
 :8080 {
-	basic_auth {
-		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
-		operator {$OPERATOR_HASH}
+	# Au-delà de la plus grosse vidéo acceptée par l'appli (500 Mo) : refusé avant même de
+	# l'atteindre.
+	request_body {
+		max_size 520MB
 	}
-
-	# "operator" est en lecture seule : on bloque toute requête d'écriture (POST = coché/
-	# commentaire/upload photo, DELETE = suppression photo) faite sous cette identité, avant
-	# même qu'elle n'atteigne l'appli.
-	@operator_write {
-		expression {http.auth.user.id} == "operator"
-		method POST DELETE
-	}
-	respond @operator_write "Lecture seule" 403
-
 	reverse_proxy app:8000
 }

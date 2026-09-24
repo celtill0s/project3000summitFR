@@ -13,74 +13,85 @@ corde, pas de via ferrata).
 
 Le projet est composé de deux parties :
 
-- **`static/`** — le frontend (carte Leaflet, `index.html`) et le
-  **catalogue public** des sommets (`static/mountains.json` : nom,
-  altitude, coordonnées, cotation, notes, source — versionné dans ce
-  dépôt, partagé avec tout le monde).
-- **`server/app.py`** — un petit backend Python (bibliothèque standard
-  uniquement ; Pillow en option pour les miniatures, voir plus bas) qui sert le frontend et
-  fusionne le catalogue public avec les **données personnelles**
-  (sommets faits, commentaires, photos/vidéos, traces GPX), stockées dans
-  `data/` — **jamais dans ce dépôt** (voir `.gitignore`). Toute écriture
-  (case cochée, commentaire, upload) passe par ce serveur et va
-  directement sur le disque de la machine qui héberge l'appli : pas de
-  `localStorage`, pas d'IndexedDB, rien à exporter/importer.
+- **`static/`** — le frontend (carte Leaflet, `index.html`, page de
+  connexion `login.html`) et le **catalogue public** des sommets
+  (`static/mountains.json` : nom, altitude, coordonnées, cotation, notes,
+  source — versionné dans ce dépôt, partagé avec tout le monde).
+- **`server/`** — un petit backend Python (bibliothèque standard
+  uniquement ; Pillow en option pour les miniatures, voir plus bas) :
+  `app.py` sert le site et fusionne le catalogue avec l'**espace personnel**
+  de l'utilisateur connecté (sommets faits, commentaires, photos/vidéos,
+  traces GPX) ; `auth.py` gère les comptes et les sessions. Tout est stocké
+  dans `data/` — **jamais dans ce dépôt** (voir `.gitignore`).
 
 Ce découpage permet à n'importe qui de cloner ce dépôt pour héberger sa
 propre instance (avec le même catalogue de sommets, ou le sien), sans
 jamais récupérer les données personnelles de quelqu'un d'autre — chaque
 instance garde les siennes localement, hors git.
 
+## Comptes et rôles
+
+Tout le site est derrière une **page de connexion** (aucun accès sans
+compte). Trois rôles :
+
+| Rôle | Voit | Peut modifier |
+|---|---|---|
+| **Invité** | le catalogue seul (carte, sommets, cotations, vue crampons) — rien de ce qu'un utilisateur a ajouté | rien |
+| **Membre** | **son propre espace** : ses sommets faits, commentaires, photos, traces GPX | son espace |
+| **Administrateur** | son espace, et l'espace de n'importe quel membre (lecture seule, bouton « Voir son espace ») | son espace + les comptes |
+
+- L'administrateur gère les comptes depuis l'onglet **👥 Utilisateurs** :
+  création (avec mot de passe provisoire généré), changement de rôle,
+  nouveau mot de passe, suppression (avec toutes les données du compte).
+  Il reste toujours au moins un administrateur.
+- Chacun peut changer son propre mot de passe (**🔑 Mot de passe**) ; ses
+  autres appareils sont alors déconnectés.
+- Sécurité : mots de passe hachés (scrypt), session dans un cookie
+  `HttpOnly`/`Secure`/`SameSite`, protection contre les requêtes forgées
+  (CSRF), **blocage temporaire après 5 échecs de connexion** (par
+  identifiant et par adresse IP). Les droits sont vérifiés par le serveur
+  sur chaque requête (table `ROUTES` de `server/app.py` : toute route non
+  déclarée est refusée), et un test couvre chaque route pour chaque rôle
+  (`tests/test_server_app.py`, « matrice des droits »).
+- Données : `data/users.json` (comptes), `data/sessions.json` (sessions,
+  seule l'empreinte du jeton est gardée), `data/users/<identifiant>/`
+  (espace de chaque utilisateur).
+
+Commandes d'administration (sur le serveur) :
+
+```bash
+docker compose exec app python3 server/app.py create-admin <identifiant>   # premier admin
+docker compose exec app python3 server/app.py set-password <identifiant>   # secours (mot de passe oublié)
+docker compose exec app python3 server/app.py list-users
+```
+
+(sans Docker : `python3 server/app.py …`). Le mot de passe est demandé au
+clavier.
+
 ## Utiliser en local (développement / test rapide)
 
 Sans Docker, avec juste Python 3 :
 
 ```bash
+python3 server/app.py create-admin moi   # une fois : crée ton compte
 python3 server/app.py
 ```
 
-puis ouvrir <http://localhost:8000>. Les données personnelles sont
+puis ouvrir <http://localhost:8000> et se connecter. Les données sont
 stockées dans `data/` (créé automatiquement à côté du dépôt).
 
 ## Auto-hébergement sur son propre serveur
 
 Le projet fournit un `Dockerfile` + `docker-compose.yml` (appli + Caddy
-en reverse proxy avec Basic Auth) prêts à l'emploi. Prérequis : Docker et
-Docker Compose installés sur le serveur.
+en reverse proxy) prêts à l'emploi. Prérequis : Docker et Docker Compose
+installés sur le serveur.
 
 ```bash
 git clone https://github.com/celtill0s/project3000summitFR.git
 cd project3000summitFR
 ```
 
-1. **Créer les identifiants Basic Auth** (protège tout le site — sans ça,
-   n'importe qui atteignant le port pourrait cocher/commenter/uploader).
-   Deux comptes sont prévus :
-
-   - **ton compte** (lecture + écriture), identifiant au choix ;
-   - **`operator`**, en **lecture seule** : Caddy refuse toute requête
-     `POST`/`DELETE` faite sous cette identité (voir `Caddyfile`). Pratique
-     pour montrer la carte à quelqu'un sans lui donner la main sur tes
-     données.
-
-   ```bash
-   mkdir -p secrets
-   # hash de ton mot de passe
-   docker run --rm caddy:2-alpine caddy hash-password --plaintext 'TON_MOT_DE_PASSE'
-   echo -n 'TON_IDENTIFIANT' > secrets/basic_auth_user
-   echo -n 'LE_HASH_AFFICHÉ_CI-DESSUS' > secrets/basic_auth_hash
-   # hash du mot de passe du compte "operator" (lecture seule)
-   docker run --rm caddy:2-alpine caddy hash-password --plaintext 'MOT_DE_PASSE_OPERATOR'
-   echo -n 'LE_HASH_AFFICHÉ_CI-DESSUS' > secrets/operator_hash
-   chmod 600 secrets/*
-   ```
-
-   Les trois fichiers sont obligatoires (`docker compose up` échoue si
-   l'un d'eux manque). Ils ne sont jamais commités et ne transitent
-   jamais par une variable d'environnement `.env` : Docker les monte
-   comme *secrets*, invisibles via `docker inspect`.
-
-2. **Lancer** :
+1. **Lancer** :
 
    ```bash
    mkdir -p data   # à créer AVANT le premier lancement, voir ci-dessous
@@ -92,13 +103,27 @@ cd project3000summitFR
    à root et l'appli plante (`PermissionError: '/data'`). Correction :
    `sudo chown -R 1000:1000 data`.
 
-   Le site écoute alors sur `127.0.0.1:8087` (modifiable dans
-   `docker-compose.yml`), protégé par la Basic Auth.
+2. **Créer ton compte administrateur** :
+
+   ```bash
+   docker compose exec app python3 server/app.py create-admin <identifiant>
+   ```
+
+   Tant qu'aucun compte n'existe, personne ne peut se connecter (les logs
+   le rappellent : `docker compose logs app`).
+
+   Le site écoute sur `127.0.0.1:8087` (modifiable dans
+   `docker-compose.yml`). Caddy ne vérifie pas de mot de passe (c'est
+   l'appli qui gère les comptes) mais protège le serveur Python : délais
+   d'expiration contre les connexions volontairement lentes, taille
+   maximale des requêtes. Le conteneur de l'appli est verrouillé
+   (système de fichiers en lecture seule sauf `data/`, aucun privilège).
 
 3. **L'exposer** derrière ton propre reverse proxy / tunnel — le projet
    ne présuppose rien de particulier ici : un Caddy/nginx existant, un
    Cloudflare Tunnel, un Tailscale Funnel, etc. suffit à pointer un nom
-   de domaine vers `http://<ton-serveur>:8087`.
+   de domaine vers `http://<ton-serveur>:8087`. **HTTPS obligatoire** côté
+   public (le cookie de session n'est envoyé qu'en HTTPS).
 
 4. **Mettre à jour** plus tard :
 
@@ -108,15 +133,35 @@ cd project3000summitFR
 
    (`git pull --ff-only` puis `docker compose up -d --build`, sans arrêt
    préalable : si le pull échoue, l'appli continue de tourner avec la
-   version actuelle. Ne touche jamais à `data/` ni `secrets/`, qui restent
-   hors git).
+   version actuelle. Ne touche jamais à `data/`, qui reste hors git).
 
-   Au démarrage, le serveur convertit automatiquement un ancien
-   `data/progress.json` (indexé par nom de sommet) au format indexé par
-   `id`. Une entrée qui ne correspond à aucun sommet (renommé avant
-   l'arrivée des ids) est conservée et signalée dans les logs
-   (`docker compose logs app`) : il suffit alors de renommer sa clé dans
-   `progress.json` avec l'`id` du sommet.
+### Mise à jour d'une instance d'avant les comptes
+
+Les versions précédentes protégeaient le site par la Basic Auth de Caddy
+(fichiers `secrets/`), avec un seul espace de données. Après `./update.sh` :
+
+1. **Créer ton compte administrateur** — tes données existantes
+   (`data/progress.json`, `photos/`, `gpx/`) lui sont **automatiquement
+   rattachées** (déplacées dans `data/users/<identifiant>/`, rien n'est
+   supprimé ni écrasé) :
+
+   ```bash
+   docker compose exec app python3 server/app.py create-admin <identifiant>
+   ```
+
+   Entre `./update.sh` et cette commande, personne ne peut se connecter :
+   enchaîne les deux.
+
+2. Ouvre le site, connecte-toi, et crée les autres comptes depuis
+   **👥 Utilisateurs** (l'ancien compte `operator` en lecture seule
+   n'existe plus : crée à la place un compte **Invité** ou **Membre**).
+
+3. Le dossier `secrets/` ne sert plus : tu peux le supprimer.
+
+4. Appli Android : installe la version qui gère les comptes (l'ancienne
+   utilisait la Basic Auth et ne peut plus se connecter).
+
+Conseil : fais une sauvegarde de `data/` avant (`scripts/backup.sh`).
 
 ### Sauvegarde
 
@@ -157,10 +202,12 @@ d'une suppression accidentelle, pas d'une panne matérielle. Copie
 - **`static/vendor/`** — Leaflet 1.9.4 et Leaflet.markercluster 1.5.3,
   copiés tels quels (avec leur licence) : aucun script chargé depuis un
   CDN tiers.
-- **`data/`** (généré à l'exécution, jamais commité) — `progress.json`
-  (sommets faits/commentaires/références photos-vidéos-gpx, indexés par
-  `id` de sommet), `photos/<id>/`, `gpx/<id>.gpx`, `thumbs/` (miniatures,
-  régénérables : inutile de les sauvegarder).
+- **`data/`** (généré à l'exécution, jamais commité) — `users.json`
+  (comptes), `sessions.json` (sessions), et un dossier par utilisateur
+  `users/<identifiant>/` : `progress.json` (sommets faits, commentaires,
+  références photos-vidéos-gpx, indexés par `id` de sommet),
+  `photos/<id>/`, `gpx/<id>.gpx`, `thumbs/` (miniatures, régénérables :
+  inutile de les sauvegarder).
 - **`android/`** — l'appli Android (voir `android/README.md`), construite et
   publiée par `.github/workflows/release.yml` à chaque tag `vX.Y.Z`.
 - **`sources.md`** — méthodologie complète : comment chaque sommet a été
@@ -196,8 +243,8 @@ d'une suppression accidentelle, pas d'une panne matérielle. Copie
   Hors-ligne, les modifications (coché, commentaire, upload) échouent avec
   un message : elles ne sont pas mises en attente.
 - **Appli Android (APK)** : alternative à la PWA qui ne dépend d'aucun
-  navigateur, avec écran de connexion (identifiants Basic Auth, mémorisés
-  chiffrés). Téléchargeable depuis les **Releases** GitHub ; voir
+  navigateur, avec écran de connexion (compte du site ; seule la session
+  est mémorisée, chiffrée — jamais le mot de passe). Téléchargeable depuis les **Releases** GitHub ; voir
   [`android/README.md`](android/README.md) pour l'installation et la
   publication d'une nouvelle version.
 - **Filtres** : par massif (Alpes/Pyrénées), par difficulté, par statut
@@ -248,8 +295,8 @@ sommet). Chaque entrée suit ce schéma :
 ```
 
 ⚠️ **L'`id` ne doit jamais changer** une fois le sommet publié : c'est la
-clé des données personnelles (`data/progress.json`, dossiers photos et
-GPX). Pour corriger un nom, modifier `name` seulement. Pour un nouveau
+clé des données personnelles (`progress.json`, dossiers photos et GPX de
+chaque utilisateur). Pour corriger un nom, modifier `name` seulement. Pour un nouveau
 sommet, prendre le nom en minuscules, sans accents, mots séparés par des
 tirets.
 
@@ -257,8 +304,8 @@ tirets.
 coordonnées, unicité des ids) — lancé aussi par la CI à chaque push.
 
 (Les champs `done`, `comment`, `photos`, `gpx` ne font **pas** partie du
-catalogue : ce sont des données personnelles, gérées par le serveur dans
-`data/progress.json`.)
+catalogue : ce sont des données personnelles, propres à chaque utilisateur
+et gérées par le serveur dans `data/users/<identifiant>/progress.json`.)
 
 Voir `sources.md` pour le barème de cotation et les sources de référence à
 utiliser pour toute nouvelle entrée.

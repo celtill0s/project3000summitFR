@@ -1,7 +1,7 @@
 // Panneau flottant de détail d'un sommet (fait, commentaire, médias, GPX).
 import { escapeHtml, safeUrl } from './util.js';
 import { DIFF_COLORS, DIFF_CRITERIA } from './config.js';
-import { doneSet } from './store.js';
+import { doneSet, session } from './store.js';
 import { apiPost, peakApiBase } from './api.js';
 import { makeIcon } from './icons.js';
 import { map, markers } from './map.js';
@@ -46,10 +46,10 @@ function popupHtml(p) {
       <div class="why"><strong>Pourquoi ce sommet est coté ${diff}</strong> : ${notes}</div>
       <div class="source-link">Source : ${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${source}</a>` : source}. Voir <code>sources.md</code> dans le dépôt pour la méthodologie complète.</div>
     </div>
-    <label class="pop-done-row"><input type="checkbox" class="pop-done-checkbox" data-name="${name}" ${checked}/> Sommet fait</label>
+    <label class="pop-done-row"><input type="checkbox" class="pop-done-checkbox" data-name="${name}" ${checked} ${session.canEdit ? '' : 'disabled'}/> Sommet fait</label>
     <div class="pop-comment-row">
-      <label>Mon commentaire</label>
-      <textarea class="pop-comment-input" placeholder="Notes perso : conditions, ressenti, conseils…">${escapeHtml(p.comment || '')}</textarea>
+      <label>${session.viewingOther ? `Commentaire de ${escapeHtml(session.space)}` : 'Mon commentaire'}</label>
+      <textarea class="pop-comment-input" placeholder="Notes perso : conditions, ressenti, conseils…" ${session.canEdit ? '' : 'readonly'}>${escapeHtml(p.comment || '')}</textarea>
       <button type="button" class="pop-comment-toggle" hidden>Voir plus</button>
       <div class="pop-comment-status"></div>
     </div>
@@ -59,6 +59,7 @@ function popupHtml(p) {
 }
 
 export function toggleDone(p) {
+  if (!session.canEdit) return; // invité, ou admin consultant l'espace d'un autre
   const name = p.name;
   const wasDone = doneSet.has(name);
   if (wasDone) doneSet.delete(name); else doneSet.add(name);
@@ -104,6 +105,7 @@ function bindPanelContent(root, p) {
     };
     refreshCommentUI();
     commentEl.addEventListener('input', () => {
+      if (!session.canEdit) return;
       if (commentStatusEl) commentStatusEl.textContent = '';
       refreshCommentUI();
       clearTimeout(saveTimer);
@@ -119,6 +121,7 @@ function bindPanelContent(root, p) {
       if (!commentExpanded) { commentExpanded = true; refreshCommentUI(); }
     });
     commentEl.addEventListener('blur', () => {
+      if (!session.canEdit) return;
       clearTimeout(saveTimer);
       const text = commentEl.value.trim();
       p.comment = text;

@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">Sommets 3000</string>
     <string name="login_title">Sommets de plus de 3000 m</string>
-    <string name="login_subtitle">Connecte-toi à ton instance avec les identifiants du site.</string>
+    <string name="login_subtitle">Connecte-toi avec ton compte du site.</string>
     <string name="server_url">Adresse du serveur</string>
     <string name="username">Identifiant</string>
     <string name="password">Mot de passe</string>
@@ -13,7 +13,8 @@
     <string name="error_not_this_app">Ce serveur ne répond pas comme une instance Sommets 3000. Vérifie l\'adresse.</string>
     <string name="error_network">Serveur injoignable. Vérifie l\'adresse et ta connexion.</string>
     <string name="error_storage">Impossible d\'enregistrer les identifiants sur cet appareil.</string>
-    <string name="error_rejected">Le serveur a refusé les identifiants enregistrés (mot de passe changé ?). Reconnecte-toi.</string>
+    <string name="error_rejected">Session expirée ou fermée (mot de passe changé, déconnexion depuis un autre appareil…). Reconnecte-toi.</string>
+    <string name="error_throttled">Trop de tentatives : %1$s.</string>
     <string name="error_no_app">Aucune application pour ouvrir ce lien.</string>
     <string name="logged_out">Déconnecté.</string>
     <string name="logout">Se déconnecter</string>

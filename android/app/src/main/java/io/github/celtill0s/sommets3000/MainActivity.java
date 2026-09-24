@@ -19,19 +19,15 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+import android.webkit.CookieManager;
 import android.webkit.GeolocationPermissions;
-import android.webkit.HttpAuthHandler;
 import android.webkit.JavascriptInterface;
-import android.webkit.ServiceWorkerClient;
-import android.webkit.ServiceWorkerController;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.webkit.WebViewDatabase;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.Toast;
@@ -91,22 +87,20 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new Bridge(), "SommetsApp");
         webView.setDownloadListener((url, userAgent, contentDisposition, mimeType, length) -> openExternal(Uri.parse(url)));
 
-        // Requêtes du service worker (démarrage, cache hors-ligne) : identifiants ajoutés par
-        // l'appli, la vue web ne sachant pas répondre à un 401 dans ce contexte.
-        ServiceWorkerController.getInstance().setServiceWorkerClient(new ServiceWorkerClient() {
-            @Override
-            public WebResourceResponse shouldInterceptRequest(WebResourceRequest request) {
-                return AuthHttp.fetch(request, credentials, MainActivity.this::onCredentialsRejected);
-            }
-        });
-
         if (Build.VERSION.SDK_INT >= 33) {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                     OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::handleBack);
         }
 
-        if (savedInstanceState != null) webView.restoreState(savedInstanceState);
-        else webView.loadUrl(credentials.serverUrl + "/");
+        // Session : le cookie délivré à la connexion est confié à la vue web, qui l'envoie ensuite
+        // d'elle-même avec chaque requête (page, service worker, envois de photos…).
+        CookieManager cookies = CookieManager.getInstance();
+        cookies.setAcceptCookie(true);
+        cookies.setCookie(credentials.serverUrl, credentials.sessionCookie(), ok -> {
+            cookies.flush();
+            if (savedInstanceState != null) webView.restoreState(savedInstanceState);
+            else webView.loadUrl(credentials.serverUrl + "/");
+        });
     }
 
     @Override
@@ -175,7 +169,9 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setMessage(R.string.logout_confirm)
                 .setPositiveButton(R.string.logout, (d, w) -> {
+                    Credentials session = credentials;
                     Credentials.clear(this);
+                    new Thread(() -> AuthHttp.logout(session)).start(); // ferme la session côté serveur
                     backToLogin(null, getString(R.string.logged_out));
                 })
                 .setNegativeButton(R.string.cancel, null)
@@ -197,7 +193,10 @@ public class MainActivity extends Activity {
             + " new MutationObserver(update).observe(document.body, {subtree: true, attributes: true, attributeFilter: ['hidden', 'class']});"
             + " update(); })();";
 
-    /** Caddy refuse les identifiants (mot de passe changé côté serveur) : retour à la connexion. */
+    /**
+     * Le site renvoie vers sa page de connexion : session expirée ou fermée (mot de passe changé,
+     * compte supprimé, déconnexion depuis un autre appareil). Retour à l'écran de connexion natif.
+     */
     private void onCredentialsRejected() {
         if (!loggingOut.compareAndSet(false, true)) return;
         runOnUiThread(() -> {
@@ -207,7 +206,7 @@ public class MainActivity extends Activity {
     }
 
     private void backToLogin(String error, String info) {
-        WebViewDatabase.getInstance(this).clearHttpAuthUsernamePassword();
+        CookieManager.getInstance().removeAllCookies(null);
         Intent i = new Intent(this, LoginActivity.class);
         if (error != null) i.putExtra(LoginActivity.EXTRA_MESSAGE, error);
         if (info != null) i.putExtra(LoginActivity.EXTRA_INFO, info);
@@ -231,19 +230,9 @@ public class MainActivity extends Activity {
 
     private class AppWebViewClient extends WebViewClient {
         @Override
-        public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-            return AuthHttp.fetch(request, credentials, MainActivity.this::onCredentialsRejected);
-        }
-
-        /** Requêtes non rejouables par l'appli (POST/DELETE : coché, commentaire, upload…). */
-        @Override
-        public void onReceivedHttpAuthRequest(WebView view, HttpAuthHandler handler, String host, String realm) {
-            if (host.equalsIgnoreCase(credentials.host()) && handler.useHttpAuthUsernamePassword()) {
-                handler.proceed(credentials.username, credentials.password);
-            } else {
-                handler.cancel();
-                if (host.equalsIgnoreCase(credentials.host())) onCredentialsRejected();
-            }
+        public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+            Uri u = Uri.parse(url);
+            if (isOwnServer(u) && "/login".equals(u.getPath())) onCredentialsRejected();
         }
 
         @Override
@@ -254,6 +243,10 @@ public class MainActivity extends Activity {
         /** Liens vers d'autres sites (Google Maps, sources…) : ouverts dans le navigateur. */
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            if (isOwnServer(request.getUrl()) && "/login".equals(request.getUrl().getPath())) {
+                onCredentialsRejected(); // redirection (ou page) vers la connexion web : session finie
+                return true;
+            }
             if (isOwnServer(request.getUrl())) return false;
             openExternal(request.getUrl());
             return true;

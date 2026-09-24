@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Backend minimal (bibliothèque standard uniquement) pour project3000summitFR.
+"""Backend (bibliothèque standard uniquement) pour project3000summitFR.
 
-Sert le frontend statique et fusionne, à la volée, le catalogue public
-(static/mountains.json, versionné dans git) avec l'overlay privé
-(data/progress.json, JAMAIS commité) qui contient l'état personnel :
-coché, commentaire, photos/vidéos, trace GPX.
+Sert le frontend et fusionne, à la volée, le catalogue public (static/mountains.json, versionné
+dans git) avec l'espace personnel de l'utilisateur connecté (data/users/<identifiant>/, JAMAIS
+commité) : sommets faits, commentaires, photos/vidéos, traces GPX.
 
-Toute écriture (coché/commentaire/upload) passe par ce serveur et va
-directement sur le disque local (data/) — pas de localStorage, pas
-d'IndexedDB, pas de dépendance au navigateur.
+Comptes et sessions : voir auth.py. Chaque requête passe par la table ROUTES, qui déclare pour
+chaque route le rôle minimal requis ; ce qui n'y figure pas est refusé. Rôles :
+- guest  (invité) : le catalogue seul, rien de ce qu'un utilisateur a ajouté ;
+- member (membre) : son propre espace, en lecture et écriture ;
+- admin           : son espace, la gestion des comptes, et la lecture de l'espace des autres.
 
 Chaque sommet est identifié par son champ "id" (stable) : les données personnelles y sont
 rattachées, pas au nom — renommer un sommet dans le catalogue ne perd donc rien.
@@ -16,19 +17,28 @@ rattachées, pas au nom — renommer un sommet dans le catalogue ne perd donc ri
 Seule dépendance optionnelle : Pillow (+ pillow-heif) pour les miniatures et la conversion
 HEIC → JPEG. Sans elle, les photos originales sont servies telles quelles.
 """
+import getpass
 import hashlib
 import json
 import mimetypes
 import os
 import re
 import secrets
+import shutil
+import sys
 import threading
 import traceback
 import unicodedata
 import xml.etree.ElementTree as ET
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
+
+try:
+    from . import auth
+except ImportError:  # lancé comme script : python3 server/app.py
+    import auth
 
 try:
     from PIL import Image, ImageOps
@@ -44,10 +54,6 @@ ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(os.environ.get("STATIC_DIR", ROOT / "static"))
 DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data"))
 CATALOG_PATH = STATIC_DIR / "mountains.json"
-PROGRESS_PATH = DATA_DIR / "progress.json"
-PHOTOS_DIR = DATA_DIR / "photos"
-GPX_DIR = DATA_DIR / "gpx"
-THUMBS_DIR = DATA_DIR / "thumbs"
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif"}
 VIDEO_EXTS = {".mp4", ".webm", ".mov", ".m4v", ".ogv", ".avi", ".mkv"}
@@ -64,12 +70,12 @@ THUMB_SIZES = {480, 1920}
 # si inchangé, donc quasi gratuit) — sans ça, un navigateur peut garder l'ancien JS après une
 # mise à jour alors que la page (et sa CSP) sont déjà nouvelles. Photos : nom aléatoire jamais
 # réutilisé, donc cache long. Miniatures : un jour (leur contenu change si Pillow est ajouté).
-# "private" : tout le site est derrière une Basic Auth, aucun cache partagé ne doit les garder.
+# "private" : données personnelles, aucun cache partagé ne doit les garder.
 CACHE_REVALIDATE = "no-cache"
 CACHE_IMMUTABLE = "private, max-age=31536000, immutable"
 CACHE_THUMB = "private, max-age=86400"
 
-# URLs versionnées des fichiers du site : index.html (jamais mis en cache) référence
+# URLs versionnées des fichiers du site : les pages (jamais mises en cache) référencent
 # /v/<empreinte>/js/main.js, /v/<empreinte>/style.css… L'empreinte change dès qu'un fichier
 # change, donc chaque mise à jour produit de nouvelles URLs qu'aucun cache (navigateur,
 # Cloudflare…) ne peut servir périmées — y compris les modules importés en relatif par
@@ -81,9 +87,19 @@ RELATIVE_ASSET_RE = re.compile(r'((?:href|src)=")(?![a-z]+:|/|#)([^"]+)"')
 # par erreur un fichier qui traînerait dans static/ (ex. un .py ou un .bak).
 STATIC_ASSET_EXTS = {".css", ".js", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".webmanifest"}
 
+# Session : cookie inaccessible au JavaScript (HttpOnly), jamais envoyé en clair (Secure), ni
+# joint aux requêtes venant d'un autre site (SameSite=Lax).
+SESSION_COOKIE = "session"
+SESSION_COOKIE_ATTRS = f"Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age={auth.SessionStore.TTL}"
+# Toute écriture doit porter cet en-tête, qu'un autre site ne peut pas ajouter à une requête
+# vers le nôtre sans autorisation CORS (jamais accordée) : protection contre les requêtes forgées
+# (CSRF), en plus de SameSite.
+CSRF_HEADER = "X-Requested-With"
+CSRF_VALUE = "SommetsApp"
+
 # Tout est servi depuis la même origine (Leaflet est vendorisé dans static/vendor/) : seules
-# les tuiles de carte (OpenStreetMap, IGN Géoplateforme) viennent d'ailleurs. 'unsafe-inline' pour les styles uniquement
-# (attributs style="" générés par le frontend), jamais pour les scripts.
+# les tuiles de carte (OpenStreetMap, IGN Géoplateforme) viennent d'ailleurs. 'unsafe-inline'
+# pour les styles uniquement (attributs style="" générés par le frontend), jamais pour les scripts.
 CONTENT_SECURITY_POLICY = "; ".join([
     "default-src 'self'",
     "script-src 'self'",
@@ -105,13 +121,42 @@ mimetypes.add_type("application/gpx+xml", ".gpx")
 mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 lock = threading.Lock()
+throttle = auth.LoginThrottle()
 
 
 class ApiError(Exception):
-    def __init__(self, status, message):
+    def __init__(self, status, message, headers=None, extra=None):
         super().__init__(message)
         self.status = status
         self.message = message
+        self.headers = headers or {}
+        self.extra = extra or {}
+
+
+# ---- stockage ----
+
+def users_store() -> auth.UserStore:
+    return auth.UserStore(DATA_DIR / "users.json")
+
+
+def sessions_store() -> auth.SessionStore:
+    return auth.SessionStore(DATA_DIR / "sessions.json")
+
+
+def user_dir(username: str) -> Path:
+    return DATA_DIR / "users" / auth.validate_username(username)
+
+
+def photos_dir(username):
+    return user_dir(username) / "photos"
+
+
+def gpx_dir(username):
+    return user_dir(username) / "gpx"
+
+
+def thumbs_dir(username):
+    return user_dir(username) / "thumbs"
 
 
 def slugify(name: str) -> str:
@@ -130,7 +175,7 @@ def find_peak(catalog, peak_id):
     for p in catalog:
         if p["id"] == peak_id:
             return p
-    raise KeyError(peak_id)
+    raise ApiError(404, "sommet inconnu")
 
 
 def migrate_progress(progress, catalog):
@@ -153,25 +198,31 @@ def migrate_progress(progress, catalog):
     return progress, changed, orphans
 
 
-def load_progress(catalog=None):
-    if not PROGRESS_PATH.exists():
+def load_progress(username, catalog=None):
+    path = user_dir(username) / "progress.json"
+    if not path.exists():
         return {}
-    with open(PROGRESS_PATH, encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         progress = json.load(f)
     return migrate_progress(progress, catalog if catalog is not None else load_catalog())[0]
 
 
-def save_progress(data):
-    PROGRESS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = PROGRESS_PATH.with_suffix(".tmp")
+def save_progress(username, data):
+    path = user_dir(username) / "progress.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, PROGRESS_PATH)  # écriture atomique : jamais de JSON tronqué en cas de crash
+    os.replace(tmp, path)  # écriture atomique : jamais de JSON tronqué en cas de crash
 
 
-def merged_peaks():
+def merged_peaks(space=None):
+    """Catalogue fusionné avec l'espace d'un utilisateur ; space=None (invité) : catalogue seul,
+    sans aucun champ personnel."""
     catalog = load_catalog()
-    progress = load_progress(catalog)
+    if space is None:
+        return catalog
+    progress = load_progress(space, catalog)
     out = []
     for p in catalog:
         overlay = progress.get(p["id"], {})
@@ -180,9 +231,18 @@ def merged_peaks():
         merged["comment"] = overlay.get("comment", "")
         merged["photos"] = [ph["filename"] for ph in overlay.get("photos", [])]
         if overlay.get("gpx"):
-            merged["gpx"] = f"/gpx/{p['id']}.gpx"
+            merged["gpx"] = f"/gpx/{space}/{p['id']}.gpx"
         out.append(merged)
     return out
+
+
+def space_stats(username):
+    progress = load_progress(username)
+    return {
+        "done": sum(1 for v in progress.values() if v.get("done")),
+        "photos": sum(len(v.get("photos", [])) for v in progress.values()),
+        "gpx": sum(1 for v in progress.values() if v.get("gpx")),
+    }
 
 
 def asset_version() -> str:
@@ -197,10 +257,10 @@ def asset_version() -> str:
     return h.hexdigest()[:12]
 
 
-def render_index() -> bytes:
-    """index.html avec ses références relatives (style.css, js/main.js, vendor/…) réécrites
-    vers le préfixe versionné."""
-    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+def render_page(name: str) -> bytes:
+    """Page HTML de static/ avec ses références relatives (style.css, js/main.js, vendor/…)
+    réécrites vers le préfixe versionné."""
+    html = (STATIC_DIR / name).read_text(encoding="utf-8")
     prefix = f"{ASSET_PREFIX}{asset_version()}/"
     return RELATIVE_ASSET_RE.sub(lambda m: f'{m.group(1)}{prefix}{m.group(2)}"', html).encode("utf-8")
 
@@ -251,8 +311,61 @@ def make_thumbnail(src: Path, dest: Path, size: int):
         tmp.unlink(missing_ok=True)
 
 
+def safe_rel_path(base: Path, rel: str) -> Path:
+    """Anti path-traversal : ne jamais faire confiance à un chemin fourni par le client."""
+    candidate = (base / rel).resolve()
+    base_resolved = base.resolve()
+    if base_resolved not in candidate.parents and candidate != base_resolved:
+        raise ApiError(400, "chemin invalide")
+    return candidate
+
+
+# ---- table des routes : (méthode, motif, rôle minimal, méthode du Handler) ----
+# PUBLIC = accessible sans connexion. Toute route absente de cette table est refusée (404).
+# Les pages HTML (PAGE) redirigent vers /login au lieu de répondre 401.
+PUBLIC = None
+PAGE = "page"
+_SEG = r"[^/]+"
+ROUTES = [
+    ("GET", r"/healthz", PUBLIC, "r_healthz"),
+    ("GET", r"/login", PUBLIC, "r_login_page"),
+    ("POST", r"/api/login", PUBLIC, "r_login"),
+    ("POST", r"/api/logout", PUBLIC, "r_logout"),
+    ("GET", r"/(?:index\.html)?", (PAGE, "guest"), "r_index"),
+    ("GET", r"/api/me", "guest", "r_me"),
+    ("POST", r"/api/me/password", "guest", "r_change_own_password"),
+    ("GET", r"/mountains\.json", "guest", "r_mountains"),
+    # Espace personnel : fichiers de <user>, lisibles par lui-même ou un admin (vérifié ensuite).
+    ("GET", rf"/photos/(?P<user>{_SEG})/(?P<peak>{_SEG})/(?P<file>{_SEG})", "member", "r_photo"),
+    ("GET", rf"/thumbs/(?P<user>{_SEG})/(?P<size>\d+)/(?P<peak>{_SEG})/(?P<file>{_SEG})", "member", "r_thumb"),
+    ("GET", rf"/gpx/(?P<user>{_SEG})/(?P<peak>{_SEG})\.gpx", "member", "r_gpx"),
+    # Écritures : toujours dans l'espace de l'utilisateur connecté.
+    ("POST", rf"/api/peaks/(?P<peak>{_SEG})/done", "member", "r_set_done"),
+    ("POST", rf"/api/peaks/(?P<peak>{_SEG})/comment", "member", "r_set_comment"),
+    ("POST", rf"/api/peaks/(?P<peak>{_SEG})/photos", "member", "r_add_photo"),
+    ("DELETE", rf"/api/peaks/(?P<peak>{_SEG})/photos/(?P<file>{_SEG})", "member", "r_delete_photo"),
+    ("POST", rf"/api/peaks/(?P<peak>{_SEG})/gpx", "member", "r_add_gpx"),
+    ("DELETE", rf"/api/peaks/(?P<peak>{_SEG})/gpx", "member", "r_delete_gpx"),
+    # Administration des comptes.
+    ("GET", r"/api/admin/users", "admin", "r_admin_list"),
+    ("POST", r"/api/admin/users", "admin", "r_admin_create"),
+    ("POST", rf"/api/admin/users/(?P<user>{_SEG})/password", "admin", "r_admin_password"),
+    ("POST", rf"/api/admin/users/(?P<user>{_SEG})/role", "admin", "r_admin_role"),
+    ("DELETE", rf"/api/admin/users/(?P<user>{_SEG})", "admin", "r_admin_delete"),
+    # Fichiers du site (code source public, identique à celui du dépôt GitHub) : en dernier, pour
+    # que les motifs ci-dessus aient la priorité ; servis depuis static/ uniquement.
+    ("GET", rf"/v/{_SEG}/(?P<rel>.+)", PUBLIC, "r_asset"),
+    ("GET", r"/(?P<rel>.+\.(?:css|js|png|jpg|jpeg|svg|ico|webmanifest))", PUBLIC, "r_static"),
+]
+COMPILED_ROUTES = [(m, re.compile(p), role, h) for m, p, role, h in ROUTES]
+
+
+def has_role(principal, role) -> bool:
+    return principal is not None and auth.ROLE_RANK[principal["role"]] >= auth.ROLE_RANK[role]
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "SummitFR/1.0"
+    server_version = "SummitFR/2.0"
     protocol_version = "HTTP/1.1"
 
     # ---- utilitaires de réponse ----
@@ -263,20 +376,40 @@ class Handler(BaseHTTPRequestHandler):
         # Seule l'origine est envoyée hors du site, jamais le chemin de la page.
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         self.send_header("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+        for cookie in getattr(self, "_set_cookies", []):
+            self.send_header("Set-Cookie", cookie)
+        self._set_cookies = []
         super().end_headers()
 
     def _write(self, data: bytes):
         if self.command != "HEAD":
             self.wfile.write(data)
 
-    def _json(self, status, obj):
+    def _json(self, status, obj, headers=None):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
         self.end_headers()
         self._write(body)
+
+    def _html(self, body: bytes):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")  # toujours la dernière empreinte
+        self.end_headers()
+        self._write(body)
+
+    def _redirect(self, location):
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
 
     def _server_error(self):
         # Le détail de l'exception reste dans les logs serveur, jamais renvoyé au client.
@@ -349,9 +482,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _read_json(self):
         try:
-            return json.loads(self._read_body(MAX_JSON_BYTES) or b"{}")
+            data = json.loads(self._read_body(MAX_JSON_BYTES) or b"{}")
         except json.JSONDecodeError:
             raise ApiError(400, "JSON invalide")
+        if not isinstance(data, dict):
+            raise ApiError(400, "JSON invalide")
+        return data
 
     def _stream_body_to(self, dest: Path, max_bytes):
         """Écrit le corps de la requête sur disque par morceaux de 1 Mo : même une vidéo de
@@ -375,30 +511,75 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             raise
 
-    def _route_peak(self, path):
-        """/api/peaks/<id>/<suite> -> (id, suite)."""
-        rest = path[len("/api/peaks/"):]
-        parts = rest.split("/", 1)
-        return unquote(parts[0]), (parts[1] if len(parts) > 1 else "")
-
-    # ---- anti path-traversal : ne jamais faire confiance à un chemin fourni par le client ----
-    def _safe_rel_path(self, base: Path, rel: str) -> Path:
-        candidate = (base / rel).resolve()
-        base_resolved = base.resolve()
-        if base_resolved not in candidate.parents and candidate != base_resolved:
-            raise ApiError(400, "chemin invalide")
-        return candidate
-
-    def _dispatch(self, handler):
+    # ---- authentification ----
+    def _session_token(self):
+        cookie = SimpleCookie()
         try:
-            handler(urlparse(self.path))
-            return
+            cookie.load(self.headers.get("Cookie", ""))
+        except Exception:
+            return None
+        morsel = cookie.get(SESSION_COOKIE)
+        return morsel.value if morsel else None
+
+    def _principal(self):
+        """Utilisateur connecté ({"username", "role"}) ou None. Relu à chaque requête : un rôle
+        changé ou un compte supprimé prend effet immédiatement."""
+        username = sessions_store().get(self._session_token())
+        return users_store().get(username) if username else None
+
+    def _client_ip(self):
+        # Derrière Cloudflare + Caddy, l'adresse du client est dans CF-Connecting-IP ; ne sert
+        # qu'à limiter les tentatives de connexion (la falsifier n'ouvre aucun accès).
+        return (self.headers.get("CF-Connecting-IP") or self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                or self.client_address[0])
+
+    def _set_session_cookie(self, token):
+        self._set_cookies = getattr(self, "_set_cookies", []) + [f"{SESSION_COOKIE}={token}; {SESSION_COOKIE_ATTRS}"]
+
+    def _clear_session_cookie(self):
+        self._set_cookies = getattr(self, "_set_cookies", []) + [f"{SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0"]
+
+    def _space_owner_check(self, owner):
+        """Lecture de l'espace de <owner> : soi-même, ou n'importe qui pour un admin."""
+        if owner != self.principal["username"] and self.principal["role"] != "admin":
+            raise ApiError(403, "accès refusé")
+        try:
+            auth.validate_username(owner)
+        except ValueError:
+            raise ApiError(404, "not found")
+
+    # ---- aiguillage ----
+    def _dispatch(self):
+        try:
+            parsed = urlparse(self.path)
+            self.query = parse_qs(parsed.query)
+            method = "GET" if self.command == "HEAD" else self.command
+            for route_method, pattern, role, handler in COMPILED_ROUTES:
+                if route_method != method:
+                    continue
+                m = pattern.fullmatch(parsed.path)
+                if not m:
+                    continue
+                self.principal = self._principal()
+                is_page = isinstance(role, tuple)
+                min_role = role[1] if is_page else role
+                if min_role is not PUBLIC and not has_role(self.principal, min_role):
+                    if self.principal is None:
+                        if is_page:
+                            self._redirect("/login")
+                            return
+                        raise ApiError(401, "connexion requise")
+                    raise ApiError(403, "accès refusé")
+                if method in ("POST", "DELETE") and self.headers.get(CSRF_HEADER) != CSRF_VALUE:
+                    raise ApiError(403, "requête refusée (en-tête de sécurité manquant)")
+                getattr(self, handler)(**{k: unquote(v) for k, v in m.groupdict().items()})
+                return
+            raise ApiError(404, "not found")
         except ApiError as e:
-            self._json(e.status, {"error": e.message})
-        except KeyError:
-            self._json(404, {"error": "sommet inconnu"})
+            self._json(e.status, {"error": e.message, **e.extra}, e.headers)
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True  # client parti (ex. vidéo refermée) : rien à répondre
+            return
         except Exception:
             self._server_error()
         # Après une erreur, le corps d'un POST a pu rester (partiellement) non lu : la connexion
@@ -406,120 +587,139 @@ class Handler(BaseHTTPRequestHandler):
         if self.command == "POST":
             self.close_connection = True
 
-    # ---- routes ----
-    def do_GET(self):
-        self._dispatch(self._get)
+    do_GET = do_HEAD = do_POST = do_DELETE = _dispatch
 
-    def do_HEAD(self):
-        self._dispatch(self._get)
+    # ---- routes publiques ----
+    def r_healthz(self):
+        self._json(200, {"ok": True})
 
-    def do_POST(self):
-        self._dispatch(self._post)
-
-    def do_DELETE(self):
-        self._dispatch(self._delete)
-
-    def _get(self, parsed):
-        path = parsed.path
-        if path == "/healthz":
-            self._json(200, {"ok": True})
-        elif path in ("/", "/index.html"):
-            body = render_index()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")  # toujours la dernière empreinte
-            self.end_headers()
-            self._write(body)
-        elif path.startswith(ASSET_PREFIX):
-            # /v/<empreinte>/<fichier> : l'empreinte ne sert qu'à changer l'URL, on sert toujours
-            # le fichier actuel (une vieille page en cache obtient donc des fichiers à jour).
-            parts = unquote(path[len(ASSET_PREFIX):]).split("/", 1)
-            if len(parts) != 2 or Path(parts[1]).suffix.lower() not in STATIC_ASSET_EXTS:
-                raise ApiError(404, "not found")
-            self._file(self._safe_rel_path(STATIC_DIR, parts[1]), cache_control=CACHE_IMMUTABLE)
-        elif path == "/mountains.json":
-            self._json(200, merged_peaks())
-        elif path.startswith("/photos/"):
-            rel = unquote(path[len("/photos/"):])
-            self._file(self._safe_rel_path(PHOTOS_DIR, rel), cache_control=CACHE_IMMUTABLE)
-        elif path.startswith("/thumbs/"):
-            self._thumb(unquote(path[len("/thumbs/"):]))
-        elif path.startswith("/gpx/"):
-            rel = unquote(path[len("/gpx/"):])
-            self._file(self._safe_rel_path(GPX_DIR, rel))
-        elif Path(unquote(path)).suffix.lower() in STATIC_ASSET_EXTS:
-            # URLs non versionnées : conservées (pages en cache d'avant le versionnage), revalidées.
-            rel = unquote(path).lstrip("/")
-            self._file(self._safe_rel_path(STATIC_DIR, rel))
+    def r_login_page(self):
+        if self.principal:
+            self._redirect("/")
         else:
-            raise ApiError(404, "not found")
+            self._html(render_page("login.html"))
 
-    def _post(self, parsed):
-        path = parsed.path
-        if not path.startswith("/api/peaks/"):
-            raise ApiError(404, "not found")
-        peak_id, tail = self._route_peak(path)
-        if tail == "done":
-            self._set_field(peak_id, "done", bool(self._read_json().get("done")))
-        elif tail == "comment":
-            self._set_field(peak_id, "comment", str(self._read_json().get("comment", ""))[:20000])
-        elif tail == "photos":
-            filename = parse_qs(parsed.query).get("filename", [""])[0]
-            self._add_photo(peak_id, filename)
-        elif tail == "gpx":
-            self._add_gpx(peak_id)
-        else:
-            raise ApiError(404, "route inconnue")
+    def r_login(self):
+        body = self._read_json()
+        username = str(body.get("username", "")).strip().lower()
+        password = body.get("password", "")
+        keys = [("user", username), ("ip", self._client_ip())]
+        wait = throttle.retry_after(keys)
+        if wait:
+            raise ApiError(429, f"trop de tentatives, réessaie dans {wait // 60 + 1} min",
+                           headers={"Retry-After": str(wait)}, extra={"retry_after": wait})
+        user = users_store().authenticate(username, password if isinstance(password, str) else "")
+        if not user:
+            throttle.failure(keys)
+            raise ApiError(401, "identifiant ou mot de passe incorrect")
+        throttle.success(("user", username))
+        self._set_session_cookie(sessions_store().create(user["username"]))
+        self._json(200, user)
 
-    def _delete(self, parsed):
-        path = parsed.path
-        if not path.startswith("/api/peaks/"):
-            raise ApiError(404, "not found")
-        peak_id, tail = self._route_peak(path)
-        if tail.startswith("photos/"):
-            self._delete_photo(peak_id, unquote(tail[len("photos/"):]))
-        elif tail == "gpx":
-            self._delete_gpx(peak_id)
-        else:
-            raise ApiError(404, "route inconnue")
+    def r_logout(self):
+        token = self._session_token()
+        if token:
+            sessions_store().revoke(token)
+        self._clear_session_cookie()
+        self._json(200, {"ok": True})
 
-    # ---- actions ----
-    def _thumb(self, rel):
-        """/thumbs/<id>/<taille>/<fichier> : version JPEG redimensionnée d'une photo, générée
-        à la première demande puis mise en cache dans data/thumbs/. Sans Pillow (ou si
-        l'image est illisible), l'original est servi à la place."""
-        parts = rel.split("/")
-        if len(parts) != 3 or not parts[1].isdigit() or int(parts[1]) not in THUMB_SIZES:
+    def r_asset(self, rel):
+        # /v/<empreinte>/<fichier> : l'empreinte ne sert qu'à changer l'URL, on sert toujours le
+        # fichier actuel (une vieille page en cache obtient donc des fichiers à jour).
+        if Path(rel).suffix.lower() not in STATIC_ASSET_EXTS:
             raise ApiError(404, "not found")
-        peak_id, size, filename = parts[0], int(parts[1]), parts[2]
-        src = self._safe_rel_path(PHOTOS_DIR, f"{peak_id}/{filename}")
+        self._file(safe_rel_path(STATIC_DIR, rel), cache_control=CACHE_IMMUTABLE)
+
+    def r_static(self, rel):
+        # URLs non versionnées (sw.js, favicon, pages en cache d'avant le versionnage) : revalidées.
+        self._file(safe_rel_path(STATIC_DIR, rel))
+
+    # ---- routes connectées ----
+    def r_index(self):
+        self._html(render_page("index.html"))
+
+    def r_me(self):
+        self._json(200, self.principal)
+
+    def r_change_own_password(self):
+        body = self._read_json()
+        username = self.principal["username"]
+        if not users_store().authenticate(username, str(body.get("current", ""))):
+            raise ApiError(403, "mot de passe actuel incorrect")
+        try:
+            users_store().set_password(username, body.get("new", ""))
+        except ValueError as e:
+            raise ApiError(400, str(e))
+        # Les autres appareils connectés sont déconnectés ; celui-ci reste connecté.
+        sessions_store().revoke_user(username, keep_token=self._session_token())
+        self._json(200, {"ok": True})
+
+    def r_mountains(self):
+        """Catalogue + espace affiché : le sien (membre/admin), celui d'un autre (admin, via
+        ?space=), ou aucun (invité : catalogue seul)."""
+        space = self.query.get("space", [None])[0]
+        if self.principal["role"] == "guest":
+            if space:
+                raise ApiError(403, "accès refusé")
+            self._json(200, merged_peaks(None))
+            return
+        space = space or self.principal["username"]
+        self._space_owner_check(space)
+        if space != self.principal["username"] and not users_store().get(space):
+            raise ApiError(404, "utilisateur inconnu")
+        self._json(200, merged_peaks(space))
+
+    def r_photo(self, user, peak, file):
+        self._space_owner_check(user)
+        self._file(safe_rel_path(photos_dir(user), f"{peak}/{file}"), cache_control=CACHE_IMMUTABLE)
+
+    def r_thumb(self, user, size, peak, file):
+        """Version JPEG redimensionnée d'une photo, générée à la première demande puis mise en
+        cache. Sans Pillow (ou si l'image est illisible), l'original est servi à la place."""
+        self._space_owner_check(user)
+        if int(size) not in THUMB_SIZES:
+            raise ApiError(404, "not found")
+        src = safe_rel_path(photos_dir(user), f"{peak}/{file}")
         if not src.is_file():
             raise ApiError(404, "not found")
         if Image is None or src.suffix.lower() not in IMAGE_EXTS:
             self._file(src, cache_control=CACHE_THUMB)
             return
-        dest = self._safe_rel_path(THUMBS_DIR, f"{peak_id}/{size}/{filename}.jpg")
+        dest = safe_rel_path(thumbs_dir(user), f"{peak}/{size}/{file}.jpg")
         if not dest.is_file():
             try:
-                make_thumbnail(src, dest, size)
+                make_thumbnail(src, dest, int(size))
             except Exception:
                 traceback.print_exc()
                 self._file(src, cache_control=CACHE_THUMB)
                 return
         self._file(dest, "image/jpeg", cache_control=CACHE_THUMB)
 
+    def r_gpx(self, user, peak):
+        self._space_owner_check(user)
+        self._file(safe_rel_path(gpx_dir(user), f"{peak}.gpx"))
+
+    # ---- écritures (espace de l'utilisateur connecté uniquement) ----
     def _set_field(self, peak_id, field, value):
+        me = self.principal["username"]
         with lock:
             catalog = load_catalog()
             find_peak(catalog, peak_id)
-            progress = load_progress(catalog)
+            progress = load_progress(me, catalog)
             progress.setdefault(peak_id, {})[field] = value
-            save_progress(progress)
+            save_progress(me, progress)
         self._json(200, {"ok": True})
 
-    def _add_photo(self, peak_id, filename):
-        find_peak(load_catalog(), peak_id)
+    def r_set_done(self, peak):
+        self._set_field(peak, "done", bool(self._read_json().get("done")))
+
+    def r_set_comment(self, peak):
+        self._set_field(peak, "comment", str(self._read_json().get("comment", ""))[:20000])
+
+    def r_add_photo(self, peak):
+        me = self.principal["username"]
+        find_peak(load_catalog(), peak)
+        filename = self.query.get("filename", [""])[0]
         ext = Path(filename).suffix.lower()
         is_video = ext in VIDEO_EXTS
         if not (is_video or ext in IMAGE_EXTS):
@@ -528,80 +728,207 @@ class Handler(BaseHTTPRequestHandler):
         safe_name = f"{secrets.token_hex(4)}{ext}"
         # L'écriture (potentiellement longue) se fait hors du verrou ; seule la mise à jour de
         # progress.json, instantanée, est sérialisée.
-        self._stream_body_to(PHOTOS_DIR / peak_id / safe_name, MAX_VIDEO_BYTES if is_video else MAX_IMAGE_BYTES)
+        self._stream_body_to(photos_dir(me) / peak / safe_name, MAX_VIDEO_BYTES if is_video else MAX_IMAGE_BYTES)
         with lock:
-            progress = load_progress()
-            progress.setdefault(peak_id, {}).setdefault("photos", []).append({
+            progress = load_progress(me)
+            progress.setdefault(peak, {}).setdefault("photos", []).append({
                 "filename": safe_name,
                 "type": "video" if is_video else "image",
             })
-            save_progress(progress)
+            save_progress(me, progress)
         self._json(200, {"ok": True, "filename": safe_name, "isVideo": is_video})
 
-    def _delete_photo(self, peak_id, filename):
+    def r_delete_photo(self, peak, file):
+        me = self.principal["username"]
         with lock:
             catalog = load_catalog()
-            find_peak(catalog, peak_id)
-            safe_name = Path(filename).name  # anti path-traversal : seul le nom de fichier est gardé
-            (PHOTOS_DIR / peak_id / safe_name).unlink(missing_ok=True)
+            find_peak(catalog, peak)
+            safe_name = Path(file).name  # anti path-traversal : seul le nom de fichier est gardé
+            (photos_dir(me) / peak / safe_name).unlink(missing_ok=True)
             for size in THUMB_SIZES:
-                (THUMBS_DIR / peak_id / str(size) / f"{safe_name}.jpg").unlink(missing_ok=True)
-            progress = load_progress(catalog)
-            entry = progress.setdefault(peak_id, {})
+                (thumbs_dir(me) / peak / str(size) / f"{safe_name}.jpg").unlink(missing_ok=True)
+            progress = load_progress(me, catalog)
+            entry = progress.setdefault(peak, {})
             entry["photos"] = [ph for ph in entry.get("photos", []) if ph["filename"] != safe_name]
-            save_progress(progress)
+            save_progress(me, progress)
         self._json(200, {"ok": True})
 
-    def _add_gpx(self, peak_id):
-        find_peak(load_catalog(), peak_id)
+    def r_add_gpx(self, peak):
+        me = self.principal["username"]
+        find_peak(load_catalog(), peak)
         payload = self._read_body(MAX_GPX_BYTES)
         validate_gpx(payload)
         with lock:
-            GPX_DIR.mkdir(parents=True, exist_ok=True)
-            tmp = GPX_DIR / f".{peak_id}.gpx.tmp"
+            gpx_dir(me).mkdir(parents=True, exist_ok=True)
+            tmp = gpx_dir(me) / f".{peak}.gpx.tmp"
             tmp.write_bytes(payload)
-            os.replace(tmp, GPX_DIR / f"{peak_id}.gpx")
-            progress = load_progress()
-            progress.setdefault(peak_id, {})["gpx"] = f"{peak_id}.gpx"
-            save_progress(progress)
+            os.replace(tmp, gpx_dir(me) / f"{peak}.gpx")
+            progress = load_progress(me)
+            progress.setdefault(peak, {})["gpx"] = f"{peak}.gpx"
+            save_progress(me, progress)
         self._json(200, {"ok": True})
 
-    def _delete_gpx(self, peak_id):
+    def r_delete_gpx(self, peak):
+        me = self.principal["username"]
         with lock:
             catalog = load_catalog()
-            find_peak(catalog, peak_id)
-            (GPX_DIR / f"{peak_id}.gpx").unlink(missing_ok=True)
-            progress = load_progress(catalog)
-            progress.setdefault(peak_id, {}).pop("gpx", None)
-            save_progress(progress)
+            find_peak(catalog, peak)
+            (gpx_dir(me) / f"{peak}.gpx").unlink(missing_ok=True)
+            progress = load_progress(me, catalog)
+            progress.setdefault(peak, {}).pop("gpx", None)
+            save_progress(me, progress)
+        self._json(200, {"ok": True})
+
+    # ---- administration des comptes ----
+    def _existing_user(self, user):
+        if not users_store().get(user):
+            raise ApiError(404, "utilisateur inconnu")
+        return user
+
+    def r_admin_list(self):
+        users = [{"username": u, **d, **(space_stats(u) if d["role"] != "guest" else {})}
+                 for u, d in sorted(users_store().all().items())]
+        self._json(200, {"users": users})
+
+    def r_admin_create(self):
+        body = self._read_json()
+        try:
+            users_store().create(str(body.get("username", "")).strip().lower(), body.get("password", ""),
+                                 body.get("role", "member"))
+        except ValueError as e:
+            raise ApiError(400, str(e))
+        self._json(200, {"ok": True})
+
+    def r_admin_password(self, user):
+        self._existing_user(user)
+        try:
+            users_store().set_password(user, self._read_json().get("password", ""))
+        except ValueError as e:
+            raise ApiError(400, str(e))
+        sessions_store().revoke_user(user, keep_token=self._session_token() if user == self.principal["username"] else None)
+        self._json(200, {"ok": True})
+
+    def r_admin_role(self, user):
+        self._existing_user(user)
+        try:
+            users_store().set_role(user, self._read_json().get("role", ""))
+        except ValueError as e:
+            raise ApiError(400, str(e))
+        self._json(200, {"ok": True})
+
+    def r_admin_delete(self, user):
+        self._existing_user(user)
+        if user == self.principal["username"]:
+            raise ApiError(400, "impossible de supprimer son propre compte depuis le site")
+        try:
+            users_store().delete(user)
+        except ValueError as e:
+            raise ApiError(400, str(e))
+        sessions_store().revoke_user(user)
+        shutil.rmtree(user_dir(user), ignore_errors=True)  # son espace : photos, GPX, progression
         self._json(200, {"ok": True})
 
 
-def migrate_on_startup():
-    """Convertit une fois pour toutes progress.json au format indexé par id, et signale les
-    entrées qui ne correspondent plus à aucun sommet (sommet renommé avant l'arrivée des ids,
-    ou retiré du catalogue) : elles sont conservées telles quelles, jamais supprimées."""
-    if not PROGRESS_PATH.exists():
-        return
-    catalog = load_catalog()
-    with open(PROGRESS_PATH, encoding="utf-8") as f:
-        progress = json.load(f)
-    progress, changed, orphans = migrate_progress(progress, catalog)
-    if changed:
-        save_progress(progress)
-        print("progress.json migré : données rattachées aux ids des sommets")
-    for key in orphans:
-        print(f"⚠️  progress.json : entrée « {key} » sans sommet correspondant dans le catalogue "
-              f"(renommé ou supprimé ?) — conservée, mais invisible dans l'appli")
+# ---- migration des données d'avant les comptes (un seul espace, à la racine de data/) ----
+
+LEGACY_ITEMS = ("progress.json", "photos", "gpx", "thumbs")
+
+
+def _non_empty(path: Path) -> bool:
+    return path.is_file() or (path.is_dir() and any(path.iterdir()))
+
+
+def legacy_data_present() -> bool:
+    return any(_non_empty(DATA_DIR / name) for name in LEGACY_ITEMS)
+
+
+def migrate_legacy_to(username: str) -> list:
+    """Déplace data/progress.json, photos/, gpx/, thumbs/ dans data/users/<username>/.
+    Renvoie la liste des éléments déplacés ; ne remplace jamais un élément existant."""
+    dest = user_dir(username)
+    dest.mkdir(parents=True, exist_ok=True)
+    moved = []
+    for name in LEGACY_ITEMS:
+        src = DATA_DIR / name
+        if not _non_empty(src):
+            continue
+        if _non_empty(dest / name):
+            raise RuntimeError(f"{dest / name} existe déjà : migration interrompue, rien n'est écrasé")
+        if (dest / name).is_dir():
+            (dest / name).rmdir()
+        os.replace(src, dest / name)
+        moved.append(name)
+    if (dest / "progress.json").exists():
+        # progress.json d'avant les ids (indexé par nom de sommet) : converti au passage.
+        save_progress(username, load_progress(username))
+    return moved
+
+
+def _prompt_password(label="Mot de passe") -> str:
+    while True:
+        pw = getpass.getpass(f"{label} ({auth.MIN_PASSWORD_LENGTH} caractères minimum) : ")
+        try:
+            auth.validate_password(pw)
+        except ValueError as e:
+            print(f"  {e}")
+            continue
+        if getpass.getpass("Confirmation : ") == pw:
+            return pw
+        print("  les deux saisies diffèrent, recommence")
+
+
+def cli(argv) -> int:
+    """Commandes d'administration, à lancer sur le serveur :
+      python3 server/app.py create-admin <identifiant>   crée un compte admin (et y rattache les
+                                                         données d'avant les comptes, s'il y en a)
+      python3 server/app.py set-password <identifiant>   réinitialise un mot de passe (secours)
+      python3 server/app.py list-users
+    (avec Docker : docker compose exec app python3 server/app.py …)"""
+    if not argv or argv[0] not in ("create-admin", "set-password", "list-users"):
+        print(cli.__doc__)
+        return 2
+    store = users_store()
+    try:
+        if argv[0] == "list-users":
+            for u, d in sorted(store.all().items()):
+                print(f"{u:32s} {d['role']}")
+            return 0
+        if len(argv) != 2:
+            print(cli.__doc__)
+            return 2
+        username = auth.validate_username(argv[1].strip().lower())
+        if argv[0] == "create-admin":
+            store.create(username, _prompt_password(), "admin")
+            print(f"✓ compte administrateur « {username} » créé")
+            if legacy_data_present():
+                moved = migrate_legacy_to(username)
+                print(f"✓ données existantes rattachées à « {username} » : {', '.join(moved)}")
+        else:
+            if not store.get(username):
+                print(f"utilisateur « {username} » inconnu")
+                return 1
+            store.set_password(username, _prompt_password("Nouveau mot de passe"))
+            sessions_store().revoke_user(username)
+            print(f"✓ mot de passe de « {username} » changé (ses sessions ouvertes sont fermées)")
+        return 0
+    except (ValueError, RuntimeError) as e:
+        print(f"erreur : {e}")
+        return 1
 
 
 def main():
+    if len(sys.argv) > 1:
+        sys.exit(cli(sys.argv[1:]))
     port = int(os.environ.get("PORT", 8000))
-    for d in (DATA_DIR, PHOTOS_DIR, GPX_DIR, THUMBS_DIR):
-        d.mkdir(parents=True, exist_ok=True)
-    migrate_on_startup()
+    (DATA_DIR / "users").mkdir(parents=True, exist_ok=True)
     if Image is None:
         print("Pillow absent : pas de miniatures, les photos originales sont servies telles quelles")
+    if users_store().count() == 0:
+        print("⚠️  Aucun compte : personne ne peut se connecter. Crée le premier administrateur :\n"
+              "     docker compose exec app python3 server/app.py create-admin <identifiant>\n"
+              "   (sans Docker : python3 server/app.py create-admin <identifiant>)")
+        if legacy_data_present():
+            print("   Les données existantes (progress.json, photos, gpx) lui seront rattachées.")
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     print(f"project3000summitFR backend listening on :{port} (data={DATA_DIR})")
     server.serve_forever()

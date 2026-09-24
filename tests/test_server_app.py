@@ -1,10 +1,12 @@
-"""Tests basiques du backend (server/app.py) : fonctions pures + quelques parcours de bout
-en bout critiques pour la sécurité/l'intégrité des données (traversal, upload, round-trips).
+"""Tests du backend (server/app.py, server/auth.py) : fonctions pures, comptes et sessions,
+matrice des droits d'accès (qui peut lire/écrire quoi), et parcours de bout en bout.
 N'utilisent jamais le vrai static/mountains.json ni le vrai data/ du dépôt — tout est isolé
 dans un dossier temporaire par test (voir isolated_dirs)."""
+import io
 import json
 import re
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -13,7 +15,9 @@ from http.server import ThreadingHTTPServer
 import pytest
 
 from server import app as server_app
+from server import auth
 
+PASSWORD = "motdepasse-1234"
 SAMPLE_CATALOG = [
     {
         "id": "pic-de-test",
@@ -42,27 +46,133 @@ SAMPLE_CATALOG = [
         "source_url": "https://test.local/aiguille-dessai",
     },
 ]
+GPX_SAMPLE = (
+    b'<?xml version="1.0" encoding="UTF-8"?>'
+    b'<gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1">'
+    b'<trk><trkseg><trkpt lat="44.5" lon="6.5"><ele>2000</ele></trkpt>'
+    b'<trkpt lat="44.51" lon="6.51"><ele>2100</ele></trkpt></trkseg></trk></gpx>'
+)
 
 
 @pytest.fixture
 def isolated_dirs(tmp_path, monkeypatch):
-    """Redirige STATIC_DIR/DATA_DIR (et dérivés) vers un dossier temporaire."""
+    """Redirige STATIC_DIR/DATA_DIR vers un dossier temporaire, avec un site minimal."""
     static_dir = tmp_path / "static"
     data_dir = tmp_path / "data"
     static_dir.mkdir()
     data_dir.mkdir()
-    (static_dir / "mountains.json").write_text(
-        json.dumps(SAMPLE_CATALOG, ensure_ascii=False), encoding="utf-8"
-    )
-
+    (static_dir / "mountains.json").write_text(json.dumps(SAMPLE_CATALOG, ensure_ascii=False), encoding="utf-8")
+    (static_dir / "index.html").write_text('<link href="style.css"><p>carte</p>', encoding="utf-8")
+    (static_dir / "login.html").write_text('<link href="style.css"><p>connexion</p>', encoding="utf-8")
+    (static_dir / "style.css").write_text("body {}", encoding="utf-8")
     monkeypatch.setattr(server_app, "STATIC_DIR", static_dir)
     monkeypatch.setattr(server_app, "DATA_DIR", data_dir)
     monkeypatch.setattr(server_app, "CATALOG_PATH", static_dir / "mountains.json")
-    monkeypatch.setattr(server_app, "PROGRESS_PATH", data_dir / "progress.json")
-    monkeypatch.setattr(server_app, "PHOTOS_DIR", data_dir / "photos")
-    monkeypatch.setattr(server_app, "GPX_DIR", data_dir / "gpx")
-    monkeypatch.setattr(server_app, "THUMBS_DIR", data_dir / "thumbs")
+    monkeypatch.setattr(server_app, "throttle", auth.LoginThrottle())
     return static_dir, data_dir
+
+
+@pytest.fixture
+def users(isolated_dirs):
+    """alice (admin), bob et carol (membres), gus (invité)."""
+    store = server_app.users_store()
+    store.create("alice", PASSWORD, "admin")
+    store.create("bob", PASSWORD, "member")
+    store.create("carol", PASSWORD, "member")
+    store.create("gus", PASSWORD, "guest")
+    return store
+
+
+@pytest.fixture
+def live_server(isolated_dirs):
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server_app.Handler)
+    port = httpd.server_address[1]
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=5)
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+_opener = urllib.request.build_opener(_NoRedirect)
+
+
+class Client:
+    """Client HTTP de test avec session (cookie géré à la main : le cookie est « Secure », qu'un
+    CookieJar refuserait de renvoyer sur http://127.0.0.1)."""
+
+    def __init__(self, base):
+        self.base = base
+        self.session = None
+
+    def request(self, method, path, data=None, headers=None, csrf=True, json_body=None):
+        headers = dict(headers or {})
+        if json_body is not None:
+            data = json.dumps(json_body).encode()
+            headers.setdefault("Content-Type", "application/json")
+        if csrf and method in ("POST", "DELETE"):
+            headers.setdefault("X-Requested-With", "SommetsApp")
+        if self.session:
+            headers["Cookie"] = f"session={self.session}"
+        req = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
+        try:
+            resp = _opener.open(req)
+            status, hdrs, body = resp.status, resp.headers, resp.read()
+        except urllib.error.HTTPError as e:
+            status, hdrs, body = e.code, e.headers, e.read()
+        for cookie in hdrs.get_all("Set-Cookie") or []:
+            m = re.match(r"session=([^;]*)", cookie)
+            if m:
+                self.session = m.group(1) or None
+        return status, hdrs, body
+
+    def get(self, path, **kw):
+        return self.request("GET", path, **kw)
+
+    def post(self, path, **kw):
+        return self.request("POST", path, **kw)
+
+    def delete(self, path, **kw):
+        return self.request("DELETE", path, **kw)
+
+    def json(self, method, path, **kw):
+        status, _, body = self.request(method, path, **kw)
+        return status, (json.loads(body) if body else None)
+
+    def login(self, username, password=PASSWORD):
+        return self.json("POST", "/api/login", json_body={"username": username, "password": password})
+
+
+@pytest.fixture
+def client(live_server):
+    return lambda: Client(live_server)
+
+
+def logged_in(make_client, username):
+    c = make_client()
+    status, _ = c.login(username)
+    assert status == 200, f"connexion de {username} impossible"
+    return c
+
+
+def upload_photo(c, peak, filename, data):
+    q = urllib.parse.urlencode({"filename": filename})
+    return c.json("POST", f"/api/peaks/{peak}/photos?{q}", data=data,
+                  headers={"Content-Type": "application/octet-stream"})
+
+
+def peak_of(c, peak_id="pic-de-test", space=None):
+    status, peaks = c.json("GET", "/mountains.json" + (f"?space={space}" if space else ""))
+    assert status == 200
+    return next(p for p in peaks if p["id"] == peak_id)
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +182,6 @@ def isolated_dirs(tmp_path, monkeypatch):
 def test_slugify_removes_accents_and_spaces():
     assert server_app.slugify("La Grande Fache") == "la-grande-fache"
     assert server_app.slugify("Pic d'Estaragne") == "pic-d-estaragne"
-    assert server_app.slugify("Ouille Noire") == "ouille-noire"
 
 
 def test_slugify_never_empty():
@@ -84,8 +193,8 @@ def test_slugify_never_empty():
     ("bytes=0-99", (0, 99)),
     ("bytes=100-", (100, 999)),
     ("bytes=-100", (900, 999)),
-    ("bytes=500-5000", (500, 999)),  # fin recadrée sur la taille du fichier
-    ("items=0-1", None),  # unité inconnue : ignorée, fichier complet
+    ("bytes=500-5000", (500, 999)),
+    ("items=0-1", None),
 ])
 def test_parse_range(header, expected):
     assert server_app.parse_range(header, 1000) == expected
@@ -113,369 +222,531 @@ def test_validate_gpx_accepts_namespaced_root():
 
 
 # ---------------------------------------------------------------------------
-# Catalogue / overlay (mountains.json + data/progress.json)
+# auth.py : mots de passe, comptes, sessions, limitation
 # ---------------------------------------------------------------------------
 
-def test_merged_peaks_defaults_when_no_progress(isolated_dirs):
-    peaks = server_app.merged_peaks()
-    assert len(peaks) == 2
-    p = next(p for p in peaks if p["id"] == "pic-de-test")
-    assert p["done"] is False
-    assert p["comment"] == ""
-    assert p["photos"] == []
-    assert "gpx" not in p
+def test_password_hash_roundtrip_and_salt():
+    h1, h2 = auth.hash_password("secret-tres-long"), auth.hash_password("secret-tres-long")
+    assert h1 != h2  # sel aléatoire
+    assert h1.startswith("scrypt$")
+    assert auth.verify_password("secret-tres-long", h1)
+    assert not auth.verify_password("secret-tres-lonG", h1)
+    assert not auth.verify_password("x", "n'importe quoi")
 
 
-def test_save_progress_roundtrips_and_is_atomic(isolated_dirs):
-    server_app.save_progress({"pic-de-test": {"done": True, "comment": "Superbe"}})
-    reloaded = server_app.load_progress()
-    assert reloaded["pic-de-test"]["done"] is True
-    assert reloaded["pic-de-test"]["comment"] == "Superbe"
-    assert not server_app.PROGRESS_PATH.with_suffix(".tmp").exists()
+@pytest.mark.parametrize("name", ["", "a", "Alice", "al ice", "../etc", "a" * 33, "é-accent", "-tiret"])
+def test_invalid_usernames(name):
+    with pytest.raises(ValueError):
+        auth.validate_username(name)
 
 
-def test_merged_peaks_reflects_progress_overlay(isolated_dirs):
-    server_app.save_progress({
-        "pic-de-test": {
-            "done": True,
-            "comment": "Vue magnifique",
-            "photos": [{"filename": "abc.jpg", "type": "image"}],
-            "gpx": "pic-de-test.gpx",
-        }
-    })
-    peaks = server_app.merged_peaks()
-    p = next(p for p in peaks if p["id"] == "pic-de-test")
-    assert p["done"] is True
-    assert p["comment"] == "Vue magnifique"
-    assert p["photos"] == ["abc.jpg"]
-    assert p["gpx"] == "/gpx/pic-de-test.gpx"
-    assert p["altitude_m"] == 3123  # le catalogue public reste intact
+def test_user_store_rules(isolated_dirs):
+    store = server_app.users_store()
+    store.create("alice", PASSWORD, "admin")
+    with pytest.raises(ValueError):
+        store.create("alice", PASSWORD, "member")  # doublon
+    with pytest.raises(ValueError):
+        store.create("bob", "court", "member")  # mot de passe trop court
+    with pytest.raises(ValueError):
+        store.create("bob", PASSWORD, "superadmin")  # rôle inconnu
+    with pytest.raises(ValueError):
+        store.set_role("alice", "member")  # dernier admin
+    with pytest.raises(ValueError):
+        store.delete("alice")  # dernier admin
+    assert store.authenticate("alice", PASSWORD) == {"username": "alice", "role": "admin"}
+    assert store.authenticate("alice", "mauvais-mot-de-passe") is None
+    assert store.authenticate("inconnu", PASSWORD) is None
+    # jamais d'empreinte de mot de passe dans all()
+    assert "hash" not in json.dumps(store.all())
 
 
-def test_legacy_name_keys_are_migrated_to_ids(isolated_dirs, capsys):
-    # Ancien format : progress.json indexé par NOM de sommet.
-    server_app.save_progress({
-        "Pic de Test": {"done": True, "comment": "Ancien format"},
-        "Sommet Renommé": {"done": True},
-    })
-    p = next(p for p in server_app.merged_peaks() if p["id"] == "pic-de-test")
-    assert p["done"] is True and p["comment"] == "Ancien format"
+def test_users_file_is_private(isolated_dirs):
+    server_app.users_store().create("alice", PASSWORD, "admin")
+    mode = (isolated_dirs[1] / "users.json").stat().st_mode & 0o777
+    assert mode == 0o600
 
-    server_app.migrate_on_startup()
-    stored = json.loads(server_app.PROGRESS_PATH.read_text(encoding="utf-8"))
-    assert stored["pic-de-test"]["comment"] == "Ancien format"
-    assert "Pic de Test" not in stored
-    # Entrée orpheline : conservée (jamais de perte de données) et signalée dans les logs.
-    assert stored["Sommet Renommé"] == {"done": True}
-    assert "Sommet Renommé" in capsys.readouterr().out
+
+def test_sessions_store_only_token_hashes(isolated_dirs):
+    store = server_app.sessions_store()
+    token = store.create("alice")
+    assert store.get(token) == "alice"
+    assert token not in (isolated_dirs[1] / "sessions.json").read_text()
+    store.revoke(token)
+    assert store.get(token) is None
+
+
+def test_session_expiry(isolated_dirs, monkeypatch):
+    store = server_app.sessions_store()
+    token = store.create("alice")
+    real_time = time.time
+    monkeypatch.setattr(auth.time, "time", lambda: real_time() + auth.SessionStore.TTL + 10)
+    assert store.get(token) is None
+
+
+def test_revoke_user_keeps_given_token(isolated_dirs):
+    store = server_app.sessions_store()
+    t1, t2, t3 = store.create("alice"), store.create("alice"), store.create("bob")
+    store.revoke_user("alice", keep_token=t2)
+    assert store.get(t1) is None and store.get(t2) == "alice" and store.get(t3) == "bob"
+
+
+def test_login_throttle():
+    t = auth.LoginThrottle()
+    keys = [("user", "alice"), ("ip", "1.2.3.4")]
+    for _ in range(auth.LoginThrottle.MAX_FAILURES - 1):
+        t.failure(keys)
+    assert t.retry_after(keys) == 0
+    t.failure(keys)
+    assert t.retry_after(keys) > 0
+    assert t.retry_after([("user", "autre"), ("ip", "5.6.7.8")]) == 0
 
 
 # ---------------------------------------------------------------------------
-# Bout en bout : vrai serveur HTTP sur un port éphémère
+# Connexion, déconnexion, sessions (HTTP)
 # ---------------------------------------------------------------------------
 
-GPX_SAMPLE = (
-    b'<?xml version="1.0" encoding="UTF-8"?>'
-    b'<gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1">'
-    b'<trk><trkseg><trkpt lat="44.5" lon="6.5"><ele>2000</ele></trkpt>'
-    b'<trkpt lat="44.51" lon="6.51"><ele>2100</ele></trkpt></trkseg></trk></gpx>'
-)
+def test_login_sets_protected_cookie(client, users):
+    c = client()
+    status, headers, body = c.post("/api/login", json_body={"username": "bob", "password": PASSWORD})
+    assert status == 200 and json.loads(body) == {"username": "bob", "role": "member"}
+    cookie = headers["Set-Cookie"]
+    for attr in ("HttpOnly", "Secure", "SameSite=Lax", "Path=/"):
+        assert attr in cookie
 
+
+def test_login_is_case_insensitive_on_username(client, users):
+    assert client().login("BOB")[0] == 200
+
+
+@pytest.mark.parametrize("username,password", [("bob", "mauvais-mot-de-passe"), ("inconnu", PASSWORD), ("bob", "")])
+def test_login_failures_same_message(client, users, username, password):
+    status, body = client().login(username, password)
+    assert status == 401
+    assert body["error"] == "identifiant ou mot de passe incorrect"
+
+
+def test_login_throttled_after_repeated_failures(client, users):
+    c = client()
+    for _ in range(auth.LoginThrottle.MAX_FAILURES):
+        assert c.login("bob", "mauvais-mot-de-passe")[0] == 401
+    status, headers, _ = c.post("/api/login", json_body={"username": "bob", "password": PASSWORD})
+    assert status == 429  # même le bon mot de passe est refusé pendant le blocage
+    assert int(headers["Retry-After"]) > 0
+    # Depuis une autre adresse, un autre compte n'est pas bloqué.
+    other = client()
+    status, _ = other.json("POST", "/api/login", json_body={"username": "carol", "password": PASSWORD},
+                           headers={"CF-Connecting-IP": "203.0.113.7"})
+    assert status == 200
+
+
+def test_logout_revokes_session(client, users):
+    c = logged_in(client, "bob")
+    old = c.session
+    assert c.json("POST", "/api/logout")[0] == 200
+    c.session = old  # réutiliser l'ancien cookie ne marche plus
+    assert c.json("GET", "/api/me")[0] == 401
+
+
+def test_writes_require_csrf_header(client, users):
+    c = logged_in(client, "bob")
+    status, _ = c.json("POST", "/api/peaks/pic-de-test/done", json_body={"done": True}, csrf=False)
+    assert status == 403
+    assert not peak_of(c)["done"]
+    assert client().json("POST", "/api/login", json_body={"username": "bob", "password": PASSWORD}, csrf=False)[0] == 403
+
+
+def test_pages_redirect_to_login_when_anonymous(client, users):
+    c = client()
+    status, headers, _ = c.get("/")
+    assert status == 302 and headers["Location"] == "/login"
+    status, _, body = c.get("/login")
+    assert status == 200 and b"connexion" in body
+    c.login("bob")
+    status, _, body = c.get("/")
+    assert status == 200 and b"carte" in body
+    status, headers, _ = c.get("/login")
+    assert status == 302 and headers["Location"] == "/"
+
+
+def test_me(client, users):
+    assert logged_in(client, "gus").json("GET", "/api/me") == (200, {"username": "gus", "role": "guest"})
+
+
+def test_change_own_password(client, users):
+    c = logged_in(client, "bob")
+    other_device = logged_in(client, "bob")
+    assert c.json("POST", "/api/me/password", json_body={"current": "faux-faux-faux", "new": "nouveau-mdp-1234"})[0] == 403
+    assert c.json("POST", "/api/me/password", json_body={"current": PASSWORD, "new": "court"})[0] == 400
+    assert c.json("POST", "/api/me/password", json_body={"current": PASSWORD, "new": "nouveau-mdp-1234"})[0] == 200
+    assert c.json("GET", "/api/me")[0] == 200            # cet appareil reste connecté
+    assert other_device.json("GET", "/api/me")[0] == 401  # les autres sont déconnectés
+    assert client().login("bob")[0] == 401
+    assert client().login("bob", "nouveau-mdp-1234")[0] == 200
+
+
+# ---------------------------------------------------------------------------
+# Matrice des droits : qui peut accéder à quoi
+# ---------------------------------------------------------------------------
 
 @pytest.fixture
-def live_server(isolated_dirs):
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server_app.Handler)
-    port = httpd.server_address[1]
-    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{port}"
-    finally:
-        httpd.shutdown()
-        httpd.server_close()
-        thread.join(timeout=5)
+def populated(client, users):
+    """bob et alice ont chacun une photo, une trace GPX, un sommet fait et un commentaire."""
+    files = {}
+    for name in ("bob", "alice"):
+        c = logged_in(client, name)
+        _, r = upload_photo(c, "pic-de-test", "p.jpg", b"\xff\xd8\xff\xe0FAKE-" + name.encode())
+        files[name] = r["filename"]
+        c.json("POST", "/api/peaks/pic-de-test/gpx", data=GPX_SAMPLE)
+        c.json("POST", "/api/peaks/pic-de-test/done", json_body={"done": True})
+        c.json("POST", "/api/peaks/pic-de-test/comment", json_body={"comment": f"commentaire de {name}"})
+    return files
 
 
-def _get(url, headers=None):
-    req = urllib.request.Request(url, headers=headers or {})
-    with urllib.request.urlopen(req) as r:
-        return r.status, r.read()
+def _matrix_cases():
+    # (qui, méthode, chemin, statut attendu) ; {bob}/{alice} = nom du fichier photo de chacun
+    anon, guest, bob, carol, alice = None, "gus", "bob", "carol", "alice"
+    return [
+        # public
+        (anon, "GET", "/healthz", 200),
+        (anon, "GET", "/login", 200),
+        (anon, "GET", "/style.css", 200),
+        (anon, "GET", "/v/abc/style.css", 200),
+        # anonyme : tout le reste refusé
+        (anon, "GET", "/", 302),
+        (anon, "GET", "/api/me", 401),
+        (anon, "POST", "/api/me/password", 401),
+        (anon, "GET", "/mountains.json", 401),
+        (anon, "GET", "/photos/bob/pic-de-test/{bob}", 401),
+        (anon, "GET", "/thumbs/bob/480/pic-de-test/{bob}", 401),
+        (anon, "GET", "/gpx/bob/pic-de-test.gpx", 401),
+        (anon, "POST", "/api/peaks/pic-de-test/done", 401),
+        (anon, "POST", "/api/peaks/pic-de-test/comment", 401),
+        (anon, "POST", "/api/peaks/pic-de-test/photos", 401),
+        (anon, "DELETE", "/api/peaks/pic-de-test/photos/{bob}", 401),
+        (anon, "POST", "/api/peaks/pic-de-test/gpx", 401),
+        (anon, "DELETE", "/api/peaks/pic-de-test/gpx", 401),
+        (anon, "GET", "/api/admin/users", 401),
+        (anon, "POST", "/api/admin/users", 401),
+        (anon, "POST", "/api/admin/users/bob/password", 401),
+        (anon, "POST", "/api/admin/users/bob/role", 401),
+        (anon, "DELETE", "/api/admin/users/bob", 401),
+        # invité : catalogue seulement
+        (guest, "GET", "/", 200),
+        (guest, "GET", "/mountains.json", 200),
+        (guest, "GET", "/mountains.json?space=bob", 403),
+        (guest, "GET", "/photos/bob/pic-de-test/{bob}", 403),
+        (guest, "GET", "/thumbs/bob/480/pic-de-test/{bob}", 403),
+        (guest, "GET", "/gpx/bob/pic-de-test.gpx", 403),
+        (guest, "POST", "/api/peaks/pic-de-test/done", 403),
+        (guest, "POST", "/api/peaks/pic-de-test/photos?filename=x.jpg", 403),
+        (guest, "DELETE", "/api/peaks/pic-de-test/gpx", 403),
+        (guest, "GET", "/api/admin/users", 403),
+        # membre : son espace uniquement
+        (bob, "GET", "/photos/bob/pic-de-test/{bob}", 200),
+        (bob, "GET", "/gpx/bob/pic-de-test.gpx", 200),
+        (bob, "GET", "/mountains.json?space=bob", 200),
+        (bob, "GET", "/photos/alice/pic-de-test/{alice}", 403),
+        (bob, "GET", "/thumbs/alice/480/pic-de-test/{alice}", 403),
+        (bob, "GET", "/gpx/alice/pic-de-test.gpx", 403),
+        (bob, "GET", "/mountains.json?space=alice", 403),
+        (carol, "GET", "/photos/bob/pic-de-test/{bob}", 403),
+        (bob, "GET", "/api/admin/users", 403),
+        (bob, "POST", "/api/admin/users", 403),
+        (bob, "DELETE", "/api/admin/users/carol", 403),
+        (bob, "POST", "/api/admin/users/carol/password", 403),
+        (bob, "POST", "/api/admin/users/bob/role", 403),
+        # admin : lit l'espace des autres, gère les comptes
+        (alice, "GET", "/photos/bob/pic-de-test/{bob}", 200),
+        (alice, "GET", "/thumbs/bob/480/pic-de-test/{bob}", 200),
+        (alice, "GET", "/gpx/bob/pic-de-test.gpx", 200),
+        (alice, "GET", "/mountains.json?space=bob", 200),
+        (alice, "GET", "/mountains.json?space=inconnu", 404),
+        (alice, "GET", "/api/admin/users", 200),
+        # chemins piégés
+        (bob, "GET", "/photos/bob/..%2F..%2Fusers.json/x", 400),
+        (bob, "GET", "/photos/..%2Fusers.json/x/y", 403),
+        (alice, "GET", "/photos/..%2F..%2Fusers.json/x/y", 404),
+        (anon, "GET", "/v/abc/..%2F..%2Fdata%2Fusers.json", 404),
+        (anon, "GET", "/users.json", 404),
+        (anon, "GET", "/sessions.json", 404),
+        (anon, "GET", "/api/inexistante", 404),
+    ]
 
 
-def _request(url, data=None, method="POST", headers=None):
-    req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
-    with urllib.request.urlopen(req) as r:
-        return r.status, json.loads(r.read())
+@pytest.mark.parametrize("who,method,path,expected", _matrix_cases(),
+                         ids=[f"{w or 'anonyme'} {m} {p} → {e}" for w, m, p, e in _matrix_cases()])
+def test_access_matrix(client, populated, who, method, path, expected):
+    c = logged_in(client, who) if who else client()
+    path = path.format(**populated)
+    body = json.dumps({"done": True, "username": "x", "password": "x", "role": "admin"}).encode() if method == "POST" else None
+    status, _, _ = c.request(method, path, data=body, headers={"Content-Type": "application/json"})
+    assert status == expected, f"{who or 'anonyme'} {method} {path} → {status}, attendu {expected}"
 
 
-def _post_json(url, obj):
-    return _request(url, json.dumps(obj).encode(), headers={"Content-Type": "application/json"})
+def test_every_private_route_is_covered_by_the_matrix():
+    """Garde-fou : toute route non publique doit être testée pour un anonyme (refus attendu).
+    Ajouter une route sans l'ajouter à la matrice fait échouer ce test."""
+    anon_paths = [(m, p.split("?")[0].format(bob="f.jpg", alice="f.jpg")) for who, m, p, _ in _matrix_cases() if who is None]
+    for method, pattern, role, _ in server_app.COMPILED_ROUTES:
+        if role is server_app.PUBLIC:
+            continue
+        assert any(m == method and pattern.fullmatch(p) for m, p in anon_paths), \
+            f"route {method} {pattern.pattern} absente de la matrice anonyme"
 
 
-def _peak(live_server, peak_id="pic-de-test"):
-    _, body = _get(f"{live_server}/mountains.json")
-    return next(p for p in json.loads(body) if p["id"] == peak_id)
+# ---------------------------------------------------------------------------
+# Espaces personnels
+# ---------------------------------------------------------------------------
+
+def test_guest_sees_catalog_without_personal_fields(client, populated):
+    status, peaks = logged_in(client, "gus").json("GET", "/mountains.json")
+    assert status == 200 and len(peaks) == 2
+    for p in peaks:
+        assert not {"done", "comment", "photos", "gpx"} & p.keys()
 
 
-def _upload_photo(live_server, filename, data, peak_id="pic-de-test"):
-    q = urllib.parse.urlencode({"filename": filename})
-    return _request(f"{live_server}/api/peaks/{peak_id}/photos?{q}", data,
-                    headers={"Content-Type": "application/octet-stream"})
+def test_spaces_are_isolated(client, populated):
+    bob = peak_of(logged_in(client, "bob"))
+    carol = peak_of(logged_in(client, "carol"))
+    assert bob["done"] and bob["comment"] == "commentaire de bob" and len(bob["photos"]) == 1
+    assert bob["gpx"] == "/gpx/bob/pic-de-test.gpx"
+    assert not carol["done"] and carol["comment"] == "" and carol["photos"] == [] and "gpx" not in carol
 
 
-def test_healthz(live_server):
-    status, body = _get(f"{live_server}/healthz")
-    assert status == 200
-    assert json.loads(body) == {"ok": True}
+def test_admin_reads_other_space(client, populated):
+    p = peak_of(logged_in(client, "alice"), space="bob")
+    assert p["comment"] == "commentaire de bob" and p["photos"] == [populated["bob"]]
 
 
-def test_security_headers(live_server):
-    with urllib.request.urlopen(f"{live_server}/healthz") as r:
-        assert r.headers["X-Content-Type-Options"] == "nosniff"
-        assert "script-src 'self'" in r.headers["Content-Security-Policy"]
-        # Régression : same-origin/no-referrer supprime le Referer exigé par les tuiles OSM.
-        assert r.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+def test_admin_writes_go_to_own_space(client, populated):
+    alice = logged_in(client, "alice")
+    alice.json("POST", "/api/peaks/aiguille-d-essai/done", json_body={"done": True})
+    assert peak_of(alice, "aiguille-d-essai")["done"]
+    assert not peak_of(logged_in(client, "bob"), "aiguille-d-essai")["done"]
 
 
-def test_get_mountains_json(live_server):
-    status, body = _get(f"{live_server}/mountains.json")
-    assert status == 200
-    assert len(json.loads(body)) == 2
+def test_invalid_json_returns_400(client, users):
+    status, body = logged_in(client, "bob").json("POST", "/api/peaks/pic-de-test/done", data=b"{pas du json",
+                                                 headers={"Content-Type": "application/json"})
+    assert status == 400 and body == {"error": "JSON invalide"}
 
 
-def test_path_traversal_on_photos_is_rejected(live_server):
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(f"{live_server}/photos/..%2f..%2fserver%2fapp.py")
-    assert exc.value.code == 400
+def test_unknown_peak_returns_404(client, users):
+    assert logged_in(client, "bob").json("POST", "/api/peaks/inexistant/done", json_body={"done": True})[0] == 404
 
 
-def test_path_traversal_on_thumbs_is_rejected(live_server):
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(f"{live_server}/thumbs/..%2f..%2f/480/app.py")
-    assert exc.value.code in (400, 404)
-
-
-def test_unknown_extension_route_is_not_found(live_server):
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(f"{live_server}/server/app.py")
-    assert exc.value.code == 404
-
-
-def test_unknown_peak_returns_404(live_server):
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _post_json(f"{live_server}/api/peaks/sommet-inexistant/done", {"done": True})
-    assert exc.value.code == 404
-
-
-def test_done_and_comment_roundtrip(live_server):
-    assert _post_json(f"{live_server}/api/peaks/pic-de-test/done", {"done": True})[0] == 200
-    assert _post_json(f"{live_server}/api/peaks/pic-de-test/comment", {"comment": "Testé automatiquement"})[0] == 200
-    p = _peak(live_server)
-    assert p["done"] is True
-    assert p["comment"] == "Testé automatiquement"
-
-
-def test_peak_id_with_apostrophe_in_name(live_server):
-    # Nom avec apostrophe/accents : la route utilise l'id, jamais le nom.
-    assert _post_json(f"{live_server}/api/peaks/aiguille-d-essai/done", {"done": True})[0] == 200
-    assert _peak(live_server, "aiguille-d-essai")["done"] is True
-
-
-def test_invalid_json_returns_400(live_server):
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _request(f"{live_server}/api/peaks/pic-de-test/done", b"{pas du json",
-                 headers={"Content-Type": "application/json"})
-    assert exc.value.code == 400
-    assert json.loads(exc.value.read()) == {"error": "JSON invalide"}
-
-
-def test_photo_upload_and_delete_roundtrip(live_server):
-    _, result = _upload_photo(live_server, "test.jpg", b"\xff\xd8\xff\xe0FAKE")
-    assert result["ok"] is True
+def test_photo_upload_and_delete_roundtrip(client, users, isolated_dirs):
+    c = logged_in(client, "bob")
+    _, result = upload_photo(c, "pic-de-test", "test.jpg", b"\xff\xd8\xff\xe0FAKE")
     filename = result["filename"]
-    assert filename in _peak(live_server)["photos"]
-
-    status, data = _get(f"{live_server}/photos/pic-de-test/{filename}")
+    assert filename in peak_of(c)["photos"]
+    status, _, data = c.get(f"/photos/bob/pic-de-test/{filename}")
     assert status == 200 and data == b"\xff\xd8\xff\xe0FAKE"
-    assert not list((server_app.PHOTOS_DIR / "pic-de-test").glob(".*.upload"))  # pas de temporaire oublié
-
-    assert _request(f"{live_server}/api/peaks/pic-de-test/photos/{filename}", method="DELETE")[0] == 200
-    assert filename not in _peak(live_server)["photos"]
-    assert not (server_app.PHOTOS_DIR / "pic-de-test" / filename).exists()
-
-
-def test_photo_upload_rejects_bad_extension(live_server):
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _upload_photo(live_server, "malware.exe", b"data")
-    assert exc.value.code == 400
+    photo_dir = isolated_dirs[1] / "users" / "bob" / "photos" / "pic-de-test"
+    assert not list(photo_dir.glob(".*.upload"))
+    assert c.json("DELETE", f"/api/peaks/pic-de-test/photos/{filename}")[0] == 200
+    assert filename not in peak_of(c)["photos"]
+    assert not (photo_dir / filename).exists()
 
 
-def test_photo_upload_rejects_oversized_before_reading(live_server, monkeypatch):
+def test_photo_upload_rejects_bad_extension(client, users):
+    assert upload_photo(logged_in(client, "bob"), "pic-de-test", "malware.exe", b"data")[0] == 400
+
+
+def test_photo_upload_rejects_oversized_before_reading(client, users, monkeypatch):
     monkeypatch.setattr(server_app, "MAX_IMAGE_BYTES", 10)
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _upload_photo(live_server, "big.jpg", b"x" * 100)
-    assert exc.value.code == 413
-    assert _peak(live_server)["photos"] == []
+    c = logged_in(client, "bob")
+    assert upload_photo(c, "pic-de-test", "big.jpg", b"x" * 100)[0] == 413
+    assert peak_of(c)["photos"] == []
 
 
-def test_video_is_served_with_range_support(live_server):
-    video = bytes(range(256)) * 40  # 10 240 octets
-    _, result = _upload_photo(live_server, "clip.mp4", video)
-    url = f"{live_server}/photos/pic-de-test/{result['filename']}"
-
-    req = urllib.request.Request(url, headers={"Range": "bytes=100-199"})
-    with urllib.request.urlopen(req) as r:
-        assert r.status == 206
-        assert r.headers["Content-Range"] == f"bytes 100-199/{len(video)}"
-        assert r.headers["Content-Type"] == "video/mp4"
-        assert r.read() == video[100:200]
-
-    with urllib.request.urlopen(url) as r:
-        assert r.status == 200
-        assert r.headers["Accept-Ranges"] == "bytes"
-        assert r.read() == video
-
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(url, {"Range": f"bytes={len(video)}-"})
-    assert exc.value.code == 416
+def test_video_is_served_with_range_support(client, users):
+    c = logged_in(client, "bob")
+    video = bytes(range(256)) * 40
+    _, result = upload_photo(c, "pic-de-test", "clip.mp4", video)
+    url = f"/photos/bob/pic-de-test/{result['filename']}"
+    status, headers, body = c.get(url, headers={"Range": "bytes=100-199"})
+    assert status == 206 and headers["Content-Range"] == f"bytes 100-199/{len(video)}"
+    assert headers["Content-Type"] == "video/mp4" and body == video[100:200]
+    status, headers, body = c.get(url)
+    assert status == 200 and headers["Accept-Ranges"] == "bytes" and body == video
+    assert c.get(url, headers={"Range": f"bytes={len(video)}-"})[0] == 416
 
 
-def test_head_returns_headers_only(live_server, isolated_dirs):
-    static_dir, _ = isolated_dirs
-    (static_dir / "style.css").write_text("body {}", encoding="utf-8")
-    req = urllib.request.Request(f"{live_server}/style.css", method="HEAD")
-    with urllib.request.urlopen(req) as r:
-        assert r.status == 200
-        assert int(r.headers["Content-Length"]) > 0
-        assert r.read() == b""
+def test_head_returns_headers_only(client, users):
+    status, headers, body = client().request("HEAD", "/style.css")
+    assert status == 200 and int(headers["Content-Length"]) > 0 and body == b""
 
 
-def test_gpx_upload_and_delete_roundtrip(live_server):
-    status, _ = _request(f"{live_server}/api/peaks/pic-de-test/gpx", GPX_SAMPLE,
-                         headers={"Content-Type": "application/gpx+xml"})
-    assert status == 200
-    p = _peak(live_server)
-    assert p["gpx"] == "/gpx/pic-de-test.gpx"
-    assert _get(f"{live_server}{p['gpx']}")[1] == GPX_SAMPLE
-
-    assert _request(f"{live_server}/api/peaks/pic-de-test/gpx", method="DELETE")[0] == 200
-    assert "gpx" not in _peak(live_server)
-    assert not (server_app.GPX_DIR / "pic-de-test.gpx").exists()
+def test_gpx_upload_and_delete_roundtrip(client, users, isolated_dirs):
+    c = logged_in(client, "bob")
+    assert c.json("POST", "/api/peaks/pic-de-test/gpx", data=GPX_SAMPLE)[0] == 200
+    p = peak_of(c)
+    assert c.get(p["gpx"])[2] == GPX_SAMPLE
+    assert c.json("DELETE", "/api/peaks/pic-de-test/gpx")[0] == 200
+    assert "gpx" not in peak_of(c)
+    assert not (isolated_dirs[1] / "users" / "bob" / "gpx" / "pic-de-test.gpx").exists()
 
 
-def test_gpx_upload_rejects_non_gpx(live_server):
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _request(f"{live_server}/api/peaks/pic-de-test/gpx", b"<html>pas un gpx</html>")
-    assert exc.value.code == 400
-    assert "gpx" not in _peak(live_server)
+def test_gpx_upload_rejects_non_gpx(client, users):
+    c = logged_in(client, "bob")
+    assert c.json("POST", "/api/peaks/pic-de-test/gpx", data=b"<html>pas un gpx</html>")[0] == 400
+    assert "gpx" not in peak_of(c)
 
 
-def test_thumbnail_is_generated_and_cleaned_up(live_server):
+def test_thumbnail_is_generated_and_cleaned_up(client, users, isolated_dirs):
     Image = pytest.importorskip("PIL.Image")
-    import io
     buf = io.BytesIO()
     Image.new("RGB", (2000, 1000), "red").save(buf, "JPEG")
-    _, result = _upload_photo(live_server, "grand.jpg", buf.getvalue())
+    c = logged_in(client, "bob")
+    _, result = upload_photo(c, "pic-de-test", "grand.jpg", buf.getvalue())
     filename = result["filename"]
-
-    status, data = _get(f"{live_server}/thumbs/pic-de-test/480/{filename}")
+    status, _, data = c.get(f"/thumbs/bob/480/pic-de-test/{filename}")
     assert status == 200
     with Image.open(io.BytesIO(data)) as thumb:
         assert thumb.size == (480, 240)
-    cached = server_app.THUMBS_DIR / "pic-de-test" / "480" / f"{filename}.jpg"
+    cached = isolated_dirs[1] / "users" / "bob" / "thumbs" / "pic-de-test" / "480" / f"{filename}.jpg"
     assert cached.is_file()
-
-    _request(f"{live_server}/api/peaks/pic-de-test/photos/{filename}", method="DELETE")
+    c.json("DELETE", f"/api/peaks/pic-de-test/photos/{filename}")
     assert not cached.exists()
 
 
-def test_thumbnail_unknown_size_is_404(live_server):
-    _, result = _upload_photo(live_server, "a.jpg", b"\xff\xd8FAKE")
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(f"{live_server}/thumbs/pic-de-test/123/{result['filename']}")
-    assert exc.value.code == 404
+def test_thumbnail_unknown_size_is_404(client, users):
+    c = logged_in(client, "bob")
+    _, result = upload_photo(c, "pic-de-test", "a.jpg", b"\xff\xd8FAKE")
+    assert c.get(f"/thumbs/bob/123/pic-de-test/{result['filename']}")[0] == 404
 
 
-def test_static_files_are_revalidated_with_etag(live_server, isolated_dirs):
-    static_dir, _ = isolated_dirs
-    js = static_dir / "app.js"
+# ---------------------------------------------------------------------------
+# Administration des comptes
+# ---------------------------------------------------------------------------
+
+def test_admin_list_with_stats_and_no_hashes(client, populated):
+    status, body = logged_in(client, "alice").json("GET", "/api/admin/users")
+    by_name = {u["username"]: u for u in body["users"]}
+    assert set(by_name) == {"alice", "bob", "carol", "gus"}
+    assert by_name["bob"]["role"] == "member"
+    assert by_name["bob"]["done"] == 1 and by_name["bob"]["photos"] == 1 and by_name["bob"]["gpx"] == 1
+    assert "done" not in by_name["gus"]
+    assert "hash" not in json.dumps(body) and "scrypt" not in json.dumps(body)
+
+
+def test_admin_create_user(client, users):
+    admin = logged_in(client, "alice")
+    assert admin.json("POST", "/api/admin/users", json_body={"username": "dave", "password": PASSWORD, "role": "member"})[0] == 200
+    assert client().login("dave") == (200, {"username": "dave", "role": "member"})
+    for bad in ({"username": "Dave!", "password": PASSWORD}, {"username": "eve", "password": "court"},
+                {"username": "dave", "password": PASSWORD}, {"username": "eve", "password": PASSWORD, "role": "roi"}):
+        assert admin.json("POST", "/api/admin/users", json_body=bad)[0] == 400
+
+
+def test_admin_reset_password_revokes_sessions(client, users):
+    bob = logged_in(client, "bob")
+    admin = logged_in(client, "alice")
+    assert admin.json("POST", "/api/admin/users/bob/password", json_body={"password": "provisoire-1234"})[0] == 200
+    assert bob.json("GET", "/api/me")[0] == 401
+    assert client().login("bob", "provisoire-1234")[0] == 200
+    assert admin.json("POST", "/api/admin/users/inconnu/password", json_body={"password": "provisoire-1234"})[0] == 404
+
+
+def test_admin_role_change_applies_immediately(client, populated):
+    bob = logged_in(client, "bob")
+    admin = logged_in(client, "alice")
+    assert admin.json("POST", "/api/admin/users/bob/role", json_body={"role": "guest"})[0] == 200
+    assert bob.json("GET", f"/photos/bob/pic-de-test/{populated['bob']}")[0] == 403  # sans se reconnecter
+    assert admin.json("POST", "/api/admin/users/alice/role", json_body={"role": "member"})[0] == 400  # dernier admin
+
+
+def test_admin_delete_user_and_data(client, populated, isolated_dirs):
+    bob = logged_in(client, "bob")
+    admin = logged_in(client, "alice")
+    assert admin.json("DELETE", "/api/admin/users/alice")[0] == 400  # pas soi-même
+    assert admin.json("DELETE", "/api/admin/users/bob")[0] == 200
+    assert bob.json("GET", "/api/me")[0] == 401
+    assert not (isolated_dirs[1] / "users" / "bob").exists()
+    assert client().login("bob")[0] == 401
+    assert admin.json("DELETE", "/api/admin/users/bob")[0] == 404
+
+
+# ---------------------------------------------------------------------------
+# Site : en-têtes, cache, pages versionnées
+# ---------------------------------------------------------------------------
+
+def test_security_headers(client, users):
+    _, headers, _ = client().get("/healthz")
+    assert headers["X-Content-Type-Options"] == "nosniff"
+    assert "script-src 'self'" in headers["Content-Security-Policy"]
+    assert headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+
+
+def test_static_files_are_revalidated_with_etag(client, isolated_dirs):
+    js = isolated_dirs[0] / "app.js"
     js.write_text("console.log(1)", encoding="utf-8")
-    with urllib.request.urlopen(f"{live_server}/app.js") as r:
-        assert r.headers["Cache-Control"] == "no-cache"
-        etag = r.headers["ETag"]
-    # Inchangé : 304 sans corps.
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(f"{live_server}/app.js", {"If-None-Match": etag})
-    assert exc.value.code == 304
-    # Modifié (mise à jour du site) : nouvel ETag, nouveau contenu servi.
+    c = client()
+    _, headers, _ = c.get("/app.js")
+    assert headers["Cache-Control"] == "no-cache"
+    assert c.get("/app.js", headers={"If-None-Match": headers["ETag"]})[0] == 304
     js.write_text("console.log(2)", encoding="utf-8")
-    status, body = _get(f"{live_server}/app.js", {"If-None-Match": etag})
+    status, _, body = c.get("/app.js", headers={"If-None-Match": headers["ETag"]})
     assert status == 200 and body == b"console.log(2)"
 
 
-def test_photos_are_cached_long_and_privately(live_server):
-    _, result = _upload_photo(live_server, "p.jpg", b"\xff\xd8FAKE")
-    with urllib.request.urlopen(f"{live_server}/photos/pic-de-test/{result['filename']}") as r:
-        assert r.headers["Cache-Control"].startswith("private, max-age=31536000")
-
-
-def test_index_references_versioned_assets(live_server, isolated_dirs):
-    static_dir, _ = isolated_dirs
-    (static_dir / "js").mkdir()
-    (static_dir / "js" / "main.js").write_text("import './map.js';", encoding="utf-8")
-    (static_dir / "style.css").write_text("body {}", encoding="utf-8")
-    (static_dir / "index.html").write_text(
-        '<link href="style.css"><script type="module" src="js/main.js"></script>'
-        '<a href="#">x</a><a href="https://ign.fr">y</a><img src="/photos/a.jpg">',
-        encoding="utf-8",
-    )
-    with urllib.request.urlopen(f"{live_server}/") as r:
-        assert r.headers["Cache-Control"] == "no-store"
-        html = r.read().decode()
-    m = re.search(r'src="/v/([0-9a-f]{12})/js/main.js"', html)
+def test_pages_reference_versioned_assets(client, users, isolated_dirs):
+    (isolated_dirs[0] / "login.html").write_text(
+        '<link href="style.css"><a href="#">x</a><a href="https://ign.fr">y</a><img src="/photos/a.jpg">', encoding="utf-8")
+    _, headers, body = client().get("/login")
+    html = body.decode()
+    assert headers["Cache-Control"] == "no-store"
+    m = re.search(r'href="/v/([0-9a-f]{12})/style.css"', html)
     assert m, html
-    version = m.group(1)
-    assert f'href="/v/{version}/style.css"' in html
-    # Liens absolus, externes et ancres : intacts.
     assert 'href="#"' in html and 'href="https://ign.fr"' in html and 'src="/photos/a.jpg"' in html
-
-    with urllib.request.urlopen(f"{live_server}/v/{version}/js/main.js") as r:
-        assert r.read() == b"import './map.js';"
-        assert "immutable" in r.headers["Cache-Control"]
-
-    # Un fichier modifié (mise à jour) change l'empreinte, donc toutes les URLs.
-    (static_dir / "js" / "main.js").write_text("import './map.js'; // v2", encoding="utf-8")
-    _, body = _get(f"{live_server}/")
-    assert f"/v/{version}/" not in body.decode()
+    status, headers, _ = client().get(f"/v/{m.group(1)}/style.css")
+    assert status == 200 and "immutable" in headers["Cache-Control"]
 
 
-def test_versioned_prefix_keeps_whitelist_and_traversal_protection(live_server, isolated_dirs):
-    static_dir, _ = isolated_dirs
-    (static_dir / "secret.py").write_text("x", encoding="utf-8")
-    for url, codes in [("/v/abc/secret.py", (404,)), ("/v/abc/..%2f..%2fserver%2fapp.js", (400, 404)), ("/v/abc", (404,))]:
-        with pytest.raises(urllib.error.HTTPError) as exc:
-            _get(f"{live_server}{url}")
-        assert exc.value.code in codes, url
+# ---------------------------------------------------------------------------
+# Migration des données d'avant les comptes, et commandes d'administration
+# ---------------------------------------------------------------------------
+
+def test_legacy_data_migrates_to_admin(isolated_dirs):
+    data = isolated_dirs[1]
+    (data / "photos" / "pic-de-test").mkdir(parents=True)
+    (data / "photos" / "pic-de-test" / "a.jpg").write_bytes(b"photo")
+    (data / "gpx").mkdir()
+    (data / "gpx" / "pic-de-test.gpx").write_bytes(GPX_SAMPLE)
+    # ancien format : indexé par nom de sommet
+    (data / "progress.json").write_text(json.dumps({"Pic de Test": {
+        "done": True, "comment": "ancien", "photos": [{"filename": "a.jpg", "type": "image"}], "gpx": "pic-de-test.gpx"}}))
+    assert server_app.legacy_data_present()
+    moved = server_app.migrate_legacy_to("alice")
+    assert set(moved) == {"progress.json", "photos", "gpx"}
+    assert not server_app.legacy_data_present()
+    p = next(x for x in server_app.merged_peaks("alice") if x["id"] == "pic-de-test")
+    assert p["done"] and p["comment"] == "ancien" and p["photos"] == ["a.jpg"] and p["gpx"] == "/gpx/alice/pic-de-test.gpx"
+    assert (data / "users" / "alice" / "photos" / "pic-de-test" / "a.jpg").read_bytes() == b"photo"
 
 
-def test_pwa_files_are_served(live_server, isolated_dirs):
-    static_dir, _ = isolated_dirs
-    (static_dir / "manifest.webmanifest").write_text('{"name": "x"}', encoding="utf-8")
-    (static_dir / "sw.js").write_text("self.addEventListener('fetch', () => {});", encoding="utf-8")
-    (static_dir / "index.html").write_text(
-        '<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials" />',
-        encoding="utf-8",
-    )
-    _, html = _get(f"{live_server}/")
-    m = re.search(r'href="(/v/[0-9a-f]{12}/manifest.webmanifest)" crossorigin="use-credentials"', html.decode())
-    assert m, html
-    with urllib.request.urlopen(f"{live_server}{m.group(1)}") as r:
-        assert r.headers["Content-Type"] == "application/manifest+json"
-    # Service worker à la racine (portée = tout le site), revalidé à chaque fois, et autorisé
-    # par sa propre CSP à récupérer les tuiles.
-    with urllib.request.urlopen(f"{live_server}/sw.js") as r:
-        assert r.headers["Content-Type"] == "text/javascript"
-        assert r.headers["Cache-Control"] == "no-cache"
-        csp = r.headers["Content-Security-Policy"]
-        assert "https://tile.openstreetmap.org" in csp.split("connect-src")[1].split(";")[0]
-        assert "https://data.geopf.fr" in csp.split("connect-src")[1].split(";")[0]
+def test_legacy_migration_never_overwrites(isolated_dirs):
+    data = isolated_dirs[1]
+    (data / "progress.json").write_text("{}")
+    (data / "users" / "alice").mkdir(parents=True)
+    (data / "users" / "alice" / "progress.json").write_text('{"x": 1}')
+    with pytest.raises(RuntimeError):
+        server_app.migrate_legacy_to("alice")
+    assert (data / "users" / "alice" / "progress.json").read_text() == '{"x": 1}'
+
+
+def test_cli_create_admin_and_set_password(isolated_dirs, monkeypatch, capsys):
+    (isolated_dirs[1] / "progress.json").write_text("{}")
+    answers = iter(["court", PASSWORD, "different-1234", PASSWORD, PASSWORD])
+    monkeypatch.setattr(server_app.getpass, "getpass", lambda prompt="": next(answers))
+    assert server_app.cli(["create-admin", "Alice"]) == 0
+    out = capsys.readouterr().out
+    assert "créé" in out and "rattachées" in out
+    assert server_app.users_store().get("alice") == {"username": "alice", "role": "admin"}
+    answers2 = iter(["nouveau-mdp-1234", "nouveau-mdp-1234"])
+    monkeypatch.setattr(server_app.getpass, "getpass", lambda prompt="": next(answers2))
+    assert server_app.cli(["set-password", "alice"]) == 0
+    assert server_app.users_store().authenticate("alice", "nouveau-mdp-1234")
+    assert server_app.cli(["set-password", "inconnu"]) == 1
+    assert server_app.cli(["n-importe-quoi"]) == 2

@@ -1,5 +1,9 @@
 // Point d'entrée : initialisation de l'interface et chargement du catalogue.
-import { PEAKS, doneSet } from './store.js';
+import { PEAKS, doneSet, session } from './store.js';
+import { apiGet } from './api.js';
+import { escapeHtml } from './util.js';
+import { initAccount } from './account.js';
+import { initAdmin } from './admin.js';
 import { applyResponsiveControlPositions, buildMarkers, setupMobileLayersPanel, syncMarkers } from './map.js';
 import { initLightbox } from './lightbox.js';
 import { initCramponView } from './crampon.js';
@@ -19,24 +23,37 @@ initAppBridge();
 applyResponsiveControlPositions();
 window.addEventListener('resize', applyResponsiveControlPositions);
 
-fetch('/mountains.json?v=' + Date.now(), { cache: 'no-store' })
-  .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-  .then(data => {
-    PEAKS.push(...data);
-    // "done" fusionné par le serveur depuis data/progress.json (overlay privé) — une seule
-    // source de vérité, partagée par tous les appareils qui consultent ce serveur.
-    PEAKS.filter(p => p.done).forEach(p => doneSet.add(p.name));
-    buildMarkers();
-    renderChipsAll();
-    syncMarkers();
-    renderList();
-    loadAllGpx();
-  })
-  .catch(err => {
-    document.getElementById('list').innerHTML =
-      `<div id="loading" class="error">Impossible de charger mountains.json (${err.message}).<br><br>
-       Vérifie que le serveur (backend) tourne bien.</div>`;
-  });
+// Démarrage : qui est connecté ? puis catalogue + espace affiché. Un admin peut consulter
+// l'espace d'un autre utilisateur via ?space=<identifiant> (lecture seule).
+async function start() {
+  const me = await apiGet('/api/me');
+  const requested = new URLSearchParams(location.search).get('space');
+  session.me = me;
+  session.space = me.role === 'guest' ? null : (me.role === 'admin' && requested) || me.username;
+  session.viewingOther = session.space !== null && session.space !== me.username;
+  session.canEdit = session.space !== null && !session.viewingOther;
+  document.body.classList.toggle('no-space', session.space === null);
+  document.body.classList.toggle('readonly', !session.canEdit);
+  initAccount();
+  initAdmin();
+
+  const query = session.viewingOther ? `?space=${encodeURIComponent(session.space)}` : '';
+  const data = await apiGet(`/mountains.json${query}`);
+  PEAKS.push(...data);
+  PEAKS.filter(p => p.done).forEach(p => doneSet.add(p.name));
+  buildMarkers();
+  renderChipsAll();
+  syncMarkers();
+  renderList();
+  loadAllGpx();
+}
+
+start().catch(err => {
+  if (err.message === 'session expirée') return; // redirection vers /login en cours
+  document.getElementById('list').innerHTML =
+    `<div id="loading" class="error">Impossible de charger les données (${escapeHtml(err.message)}).<br><br>
+     Vérifie ta connexion, ou que le serveur tourne bien.</div>`;
+});
 
 // PWA : service worker (démarrage instantané, hors-ligne partiel — voir /sw.js). Ignoré si le
 // navigateur ne le gère pas, ou hors contexte sécurisé (http:// ailleurs que sur localhost).

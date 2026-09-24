@@ -637,3 +637,83 @@ html, body { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystem
     border-top: 1px solid var(--border);
   }
 }
+
+/* ---- Comptes : bandeau utilisateur, espace consulté, rôles (js/account.js, js/admin.js) ---- */
+#account-bar { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+#account-bar button { margin-top: 0; }
+#account-name { font-size: 12px; font-weight: 600; color: var(--text); margin-right: 4px; }
+#space-banner {
+  padding: 8px 18px;
+  background: #fff4d6;
+  border-bottom: 1px solid #e8d49a;
+  font-size: 12.5px;
+  color: #6b5210;
+}
+#space-banner a { color: var(--accent); font-weight: 600; }
+/* Invité (pas d'espace personnel) : rien de ce qu'un utilisateur ajoute n'est affiché. */
+body.no-space .personal-only,
+body.no-space .done-check,
+body.no-space .pop-done-row,
+body.no-space .pop-comment-row,
+body.no-space .photos-row,
+body.no-space .gpx-row { display: none !important; }
+/* Lecture seule (admin consultant l'espace d'un autre) : pas de boutons de modification. */
+body.readonly .photos-add,
+body.readonly .photo-del,
+body.readonly .gpx-import,
+body.readonly .gpx-replace,
+body.readonly .gpx-delete { display: none !important; }
+body.readonly .done-check:disabled, body.readonly .pop-done-checkbox:disabled { cursor: not-allowed; }
+
+/* Boutons génériques */
+.btn-primary, .btn-secondary, .btn-danger {
+  font: inherit; font-size: 13px; font-weight: 600; border-radius: 6px; padding: 8px 12px; cursor: pointer;
+}
+.btn-primary { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+.btn-primary:disabled { opacity: .6; cursor: default; }
+.btn-secondary { background: var(--panel); color: var(--accent); border: 1px solid var(--border); }
+.btn-danger { background: var(--panel); color: #b3261e; border: 1px solid #e3b4b0; }
+.modal-status { font-size: 12.5px; color: #b3261e; min-height: 1em; }
+.modal-status.ok { color: #1e6b3a; }
+
+/* Fenêtre « changer mon mot de passe » */
+.modal { position: fixed; inset: 0; z-index: 7000; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.modal[hidden] { display: none; }
+.modal-box { background: var(--panel); border-radius: 10px; padding: 20px; width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+.modal-box h2 { margin: 0; font-size: 17px; }
+.modal-box label, .admin-card label, .login-box label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--text); }
+.modal-box input, .admin-card input, .admin-card select, .login-box input {
+  font: inherit; font-size: 15px; font-weight: 400; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: #fff;
+}
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Vue « Utilisateurs » (admin) : même principe que la vue crampons */
+#admin-view { position: fixed; inset: 0; z-index: 6000; background: var(--bg); display: flex; flex-direction: column; overflow: hidden; }
+#admin-view[hidden] { display: none; }
+#admin-view-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; background: #1b3a2c; color: #fff; }
+#admin-view-header h2 { margin: 0; font-size: 16px; }
+#admin-view-close { background: none; border: none; color: #fff; font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+#admin-view-close:hover { background: rgba(255,255,255,.15); }
+#admin-view-body { padding: 18px 22px; overflow-y: auto; flex: 1; max-width: 900px; margin: 0 auto; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; }
+.admin-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.admin-card h3 { margin: 0; font-size: 14px; }
+.admin-create-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.admin-pw-row { display: flex; gap: 6px; }
+.admin-pw-row input { flex: 1; min-width: 0; }
+.admin-user { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; padding: 12px 0; border-top: 1px solid var(--border); align-items: center; }
+.admin-user:first-child { border-top: none; }
+.admin-user-name { font-weight: 700; font-size: 14px; }
+.admin-me { font-weight: 400; color: var(--muted); font-size: 12px; }
+.admin-user-stats { font-weight: 400; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.admin-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.admin-actions button { padding: 6px 10px; font-size: 12px; }
+
+/* Page de connexion (static/login.html) */
+#login-page { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; box-sizing: border-box; }
+.login-box { width: 100%; max-width: 360px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 28px 24px; box-shadow: 0 6px 24px rgba(0,0,0,.08); text-align: center; }
+.login-logo { border-radius: 20px; }
+.login-box h1 { font-size: 20px; margin: 12px 0 4px; color: #1b3a2c; }
+.login-subtitle { font-size: 13px; color: var(--muted); margin: 0 0 20px; }
+#login-form { display: flex; flex-direction: column; gap: 14px; text-align: left; }
+#login-form .btn-primary { padding: 11px; font-size: 15px; }
+.login-help { font-size: 12px; color: var(--muted); margin: 16px 0 0; }

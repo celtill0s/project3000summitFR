@@ -77,16 +77,15 @@ public class LoginActivity extends Activity {
             showError(getString(R.string.error_empty));
             return;
         }
-        Credentials c = new Credentials(url, user, password);
         setBusy(true);
         new Thread(() -> {
-            AuthHttp.CheckResult result = AuthHttp.check(c);
+            AuthHttp.LoginResult result = AuthHttp.login(url, user, password);
             runOnUiThread(() -> {
                 setBusy(false);
-                switch (result) {
+                switch (result.status) {
                     case OK:
                         try {
-                            c.save(this);
+                            new Credentials(url, user, result.token).save(this);
                         } catch (Exception e) {
                             showError(getString(R.string.error_storage));
                             return;
@@ -94,7 +93,11 @@ public class LoginActivity extends Activity {
                         openMap();
                         break;
                     case BAD_CREDENTIALS:
+                        passwordField.setText("");
                         showError(getString(R.string.error_credentials));
+                        break;
+                    case THROTTLED:
+                        showError(getString(R.string.error_throttled, result.message));
                         break;
                     case NOT_THIS_APP:
                         showError(getString(R.string.error_not_this_app));
@@ -107,8 +110,8 @@ public class LoginActivity extends Activity {
     }
 
     /**
-     * Ajoute https:// si absent et retire le / final. HTTPS obligatoire (le mot de passe
-     * circule dans chaque requête), sauf http://localhost en build de debug (tests).
+     * Ajoute https:// si absent et retire le / final. HTTPS obligatoire (mot de passe à la
+     * connexion, puis jeton de session), sauf http://localhost en build de debug (tests).
      */
     private static String normalizeUrl(String raw) {
         String s = raw.trim();

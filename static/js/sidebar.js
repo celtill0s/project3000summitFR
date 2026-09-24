@@ -1,7 +1,7 @@
 // Barre latérale : filtres, recherche, liste des sommets, liste mobile.
 import { escapeHtml } from './util.js';
 import { DIFFS, DIFF_COLORS, REGIONS, STATUSES } from './config.js';
-import { PEAKS, doneSet, passesBaseFilter, state } from './store.js';
+import { PEAKS, doneSet, passesBaseFilter, session, state } from './store.js';
 import { map, markers, syncMarkers } from './map.js';
 import { openPeakPanel, toggleDone } from './panel.js';
 
@@ -59,7 +59,9 @@ function setStatus(v) {
 export function updateDoneCount() {
   const el = document.getElementById('count');
   const visible = PEAKS.filter(passesBaseFilter);
-  el.textContent = `${visible.length} sommet${visible.length > 1 ? 's' : ''} affiché${visible.length > 1 ? 's' : ''} sur ${PEAKS.length} · ${doneSet.size} fait${doneSet.size > 1 ? 's' : ''} au total`;
+  const shown = `${visible.length} sommet${visible.length > 1 ? 's' : ''} affiché${visible.length > 1 ? 's' : ''} sur ${PEAKS.length}`;
+  // Invité : pas d'espace personnel, donc pas de « faits ».
+  el.textContent = session.space === null ? shown : `${shown} · ${doneSet.size} fait${doneSet.size > 1 ? 's' : ''} au total`;
   const toggleBtn = document.getElementById('mobile-list-toggle');
   if (toggleBtn && !document.getElementById('app').classList.contains('mobile-list-open')) {
     toggleBtn.textContent = `📋 Liste (${visible.length})`;
@@ -90,7 +92,7 @@ export function renderList() {
     item.innerHTML = `
       <div class="row1">
         <span>
-          <input type="checkbox" class="done-check" ${done ? 'checked' : ''} title="Marquer comme fait" />
+          <input type="checkbox" class="done-check" ${done ? 'checked' : ''} ${session.canEdit ? '' : 'disabled'} title="Marquer comme fait" />
           <span class="name">${escapeHtml(p.name)}</span>
         </span>
         <span class="alt">${escapeHtml(p.altitude_m)} m</span>

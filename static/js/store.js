@@ -2,6 +2,13 @@
 import { DIFFS, REGIONS } from './config.js';
 
 export const PEAKS = [];
+
+// Utilisateur connecté et espace affiché (voir main.js) :
+// - me        : {username, role} ;
+// - space     : utilisateur dont on affiche les données (null pour un invité : catalogue seul) ;
+// - canEdit   : modifications autorisées (faux pour un invité, ou un admin qui consulte l'espace
+//               d'un autre) — le serveur applique de toute façon les mêmes règles.
+export const session = { me: null, space: null, canEdit: false, viewingOther: false };
 export const doneSet = new Set();
 
 export const state = {

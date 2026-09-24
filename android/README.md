@@ -6,14 +6,15 @@ dépend d'**aucun navigateur** installé sur le téléphone (Chrome, Brave, Duck
 ## Fonctionnement
 
 - **Écran de connexion** au premier lancement : adresse du serveur (à saisir une fois, puis
-  mémorisée ; le même APK fonctionne avec n'importe quelle instance) + identifiant et mot de passe du site,
-  c'est-à-dire ceux de la Basic Auth de Caddy. Ils sont vérifiés auprès du serveur avant
-  d'entrer, puis mémorisés : le mot de passe est chiffré avec une clé du coffre Android
-  (AndroidKeyStore) et exclu des sauvegardes. Le compte `operator` (lecture seule) fonctionne
-  aussi.
-- **Authentification** : l'appli ajoute elle-même les identifiants aux requêtes vers le serveur,
-  y compris celles du service worker. C'est ce qui permet le **hors-ligne** (voir le README
-  principal) malgré la Basic Auth. Aucune modification de Caddy ni du serveur n'est nécessaire.
+  mémorisée ; le même APK fonctionne avec n'importe quelle instance) + identifiant et mot de
+  passe du **compte du site** (voir « Comptes et rôles » dans le README principal). L'appli
+  se connecte au serveur, puis ne garde que le **jeton de session** — jamais le mot de passe —,
+  chiffré avec une clé du coffre Android (AndroidKeyStore) et exclu des sauvegardes. Les droits
+  sont ceux du compte : un invité ne voit que le catalogue, un membre son propre espace.
+- **Session** : le jeton est confié à la vue web (cookie), qui l'envoie seule avec chaque
+  requête, y compris celles du service worker : le **hors-ligne** fonctionne (voir le README
+  principal). Si la session prend fin (mot de passe changé, compte supprimé, déconnexion depuis
+  un autre appareil), l'appli revient d'elle-même à l'écran de connexion, avec une explication.
 - **Fonctions natives** : envoi de photos, vidéos et GPX (sélecteur Android), bouton « me
   localiser » (autorisation GPS demandée au premier appui), enregistrement des traces GPX dans
   « Téléchargements », vidéos en plein écran, liens externes (Google Maps, sources) ouverts dans
@@ -21,7 +22,6 @@ dépend d'**aucun navigateur** installé sur le téléphone (Chrome, Brave, Duck
   quitter, icône « porte de sortie » en haut à droite de la carte pour se déconnecter
   (native : fonctionne quelle que soit la version du site ; cachée quand la visionneuse, la vue
   crampons ou la liste plein écran sont ouvertes, pour ne pas masquer leur bouton de fermeture).
-- Si le mot de passe change côté serveur, l'appli revient d'elle-même à l'écran de connexion.
 - Le contenu (carte, fonctionnalités) vient du serveur : il se met à jour avec `update.sh`, sans
   réinstaller l'APK. Une nouvelle version de l'APK n'est utile que si l'appli elle-même change.
 - Android 10 minimum. HTTPS obligatoire (le mot de passe accompagne chaque requête).

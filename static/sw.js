@@ -4,16 +4,19 @@
 // Stratégies :
 // - page (navigation)            : réseau d'abord, dernière version en cache si hors-ligne ;
 // - /v/<empreinte>/…             : cache d'abord (URL immuable, voir ASSET_PREFIX côté serveur) ;
-// - /mountains.json, /gpx/…      : réseau d'abord, cache si hors-ligne ou réseau trop lent ;
+// - /api/me, /mountains.json, /gpx/… : réseau d'abord, cache si hors-ligne ou réseau trop lent ;
 // - miniatures, photos           : cache d'abord (nom de fichier jamais réutilisé) ;
 // - tuiles OSM / IGN             : réseau d'abord (OSM exige la revalidation), cache hors-ligne.
 // Jamais interceptés : écritures (POST/DELETE) et requêtes Range (lecture vidéo).
+// Les caches personnels (pages, data, media) sont vidés par la page à chaque connexion et
+// déconnexion (js/session-utils.js) : un autre compte sur le même appareil n'y a pas accès.
 
+// v2 : passage aux comptes (données rangées par utilisateur) — purge des caches d'avant.
 const CACHE = {
-  pages: 'pages-v1',
+  pages: 'pages-v2',
   assets: 'assets-v1',
-  data: 'data-v1',
-  media: 'media-v1',
+  data: 'data-v2',
+  media: 'media-v2',
   tiles: 'tiles-v1'
 };
 const LIMIT = { media: 300, tiles: 3000 }; // nombre d'entrées max (les plus anciennes partent)
@@ -57,9 +60,11 @@ self.addEventListener('fetch', (event) => {
       event.respondWith(page(req));
     } else if (url.pathname.startsWith('/v/')) {
       event.respondWith(cacheFirst(req, CACHE.assets));
-    } else if (url.pathname === '/mountains.json' || url.pathname.startsWith('/gpx/')) {
-      // mountains.json est demandé avec ?v=<horodatage> : clé de cache sans la query.
-      event.respondWith(networkFirst(req, CACHE.data, { key: url.origin + url.pathname, timeout: SLOW_NETWORK_MS }));
+    } else if (url.pathname === '/api/me' || url.pathname === '/mountains.json' || url.pathname.startsWith('/gpx/')) {
+      // Clé de cache : le chemin, plus l'espace consulté (?space=, admin) pour ne pas mélanger.
+      const space = url.searchParams.get('space');
+      const key = url.origin + url.pathname + (space ? `?space=${encodeURIComponent(space)}` : '');
+      event.respondWith(networkFirst(req, CACHE.data, { key, timeout: SLOW_NETWORK_MS }));
     } else if (url.pathname.startsWith('/thumbs/') || (url.pathname.startsWith('/photos/') && IMAGE_RE.test(url.pathname))) {
       event.respondWith(cacheFirst(req, CACHE.media, LIMIT.media));
     }
@@ -74,9 +79,9 @@ async function page(req) {
   const cache = await caches.open(CACHE.pages);
   try {
     const res = await fetch(req);
-    // 401 (Basic Auth) & co : renvoyés tels quels pour que le navigateur demande le mot de
-    // passe, jamais mis en cache.
-    if (res.ok) {
+    // Seule la vraie page de la carte est gardée : jamais la page de connexion vers laquelle le
+    // serveur redirige quand la session a expiré (res.redirected).
+    if (res.ok && !res.redirected && new URL(res.url).pathname === '/') {
       const html = await res.clone().text();
       await cache.put('/', res.clone());
       pruneOldAssets(html);

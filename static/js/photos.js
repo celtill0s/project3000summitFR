@@ -3,6 +3,9 @@ import { escapeHtml, isVideoFile } from './util.js';
 import { apiDelete, apiUpload, mediaUrls, peakApiBase } from './api.js';
 import { openLightbox } from './lightbox.js';
 
+const MAX_IMAGE_MB = 25;
+const MAX_VIDEO_MB = 500;
+
 function mediaThumbHtml(key, urls, isVideo, alt, deleteBtnHtml) {
   const mediaTag = isVideo
     ? `<video src="${urls.thumb}" muted playsinline preload="metadata"></video><span class="photos-play">&#9658;</span>`
@@ -79,7 +82,14 @@ export function bindPhotosRow(root, p) {
     fileInput.value = '';
     const addedFilenames = [];
     for (const file of files) {
-      const isVideo = (file.type || '').startsWith('video/');
+      const isVideo = isVideoFile(file.name) || (file.type || '').startsWith('video/');
+      // Mêmes limites que le serveur (MAX_VIDEO_BYTES / MAX_IMAGE_BYTES) : vérifiées ici pour un
+      // message clair, au lieu d'une connexion coupée en plein envoi.
+      const limitMb = isVideo ? MAX_VIDEO_MB : MAX_IMAGE_MB;
+      if (file.size > limitMb * 1024 * 1024) {
+        statusEl.textContent = `« ${file.name} » est trop volumineux (${Math.round(file.size / 1048576)} Mo, maximum ${limitMb} Mo pour ${isVideo ? 'une vidéo' : 'une photo'}).`;
+        continue;
+      }
       statusEl.textContent = `Envoi de ${isVideo ? 'la vidéo' : 'la photo'} en cours…`;
       try {
         const result = await apiUpload(`${peakApiBase(p)}/photos`, file);

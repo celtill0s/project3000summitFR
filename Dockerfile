@@ -9,7 +9,8 @@ COPY server/ ./server/
 ENV PORT=8000 \
     DATA_DIR=/data \
     STATIC_DIR=/app/static \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 # Tourne en utilisateur non-root (uid/gid 1000, aligné sur l'utilisateur hôte qui possède le
 # bind-mount ./data) : un éventuel bug d'écriture/traversal reste confiné à cet utilisateur,
 # pas root dans le conteneur.
