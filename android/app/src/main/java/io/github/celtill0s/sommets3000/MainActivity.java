@@ -2,15 +2,19 @@ package io.github.celtill0s.sommets3000;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.util.Base64;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
@@ -29,6 +33,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebViewDatabase;
 import android.widget.FrameLayout;
+import android.widget.ImageButton;
 import android.widget.Toast;
 import android.window.OnBackInvokedDispatcher;
 
@@ -45,6 +50,8 @@ public class MainActivity extends Activity {
     private WebView webView;
     private final AppChromeClient chromeClient = new AppChromeClient();
     private FrameLayout root;
+    private ImageButton exitButton;
+    private volatile boolean exitHiddenByPage = false; // écran du site par-dessus la carte
     private Credentials credentials;
     private final AtomicBoolean loggingOut = new AtomicBoolean(false);
 
@@ -69,6 +76,7 @@ public class MainActivity extends Activity {
         root.setFitsSystemWindows(true); // pas de contenu sous la barre d'état / de navigation
         webView = new WebView(this);
         root.addView(webView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        addExitButton();
         setContentView(root);
 
         WebSettings s = webView.getSettings();
@@ -126,6 +134,69 @@ public class MainActivity extends Activity {
         });
     }
 
+    /**
+     * Bouton « porte de sortie » (déconnexion), natif : ne dépend pas de la version du site.
+     * Téléphone : coin haut droit de la carte (libre sur mobile). Écran large (≥ 760 dp, mise en
+     * page « bureau » du site) : sous le sélecteur de calques, qui occupe ce coin.
+     */
+    private void addExitButton() {
+        float dp = getResources().getDisplayMetrics().density;
+        exitButton = new ImageButton(this);
+        exitButton.setImageResource(R.drawable.ic_exit);
+        exitButton.setContentDescription(getString(R.string.logout));
+        exitButton.setTooltipText(getString(R.string.logout));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(getColor(R.color.brand_dark));
+        exitButton.setBackground(bg);
+        exitButton.setElevation(4 * dp);
+        exitButton.setAlpha(0.92f);
+        exitButton.setOnClickListener(v -> confirmLogout());
+        root.addView(exitButton);
+        positionExitButton();
+    }
+
+    private void positionExitButton() {
+        float dp = getResources().getDisplayMetrics().density;
+        boolean wide = getResources().getConfiguration().screenWidthDp >= 760;
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Math.round(40 * dp), Math.round(40 * dp), Gravity.TOP | Gravity.END);
+        lp.topMargin = Math.round((wide ? 220 : 12) * dp);
+        lp.rightMargin = Math.round(12 * dp);
+        exitButton.setLayoutParams(lp);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig); // rotation : pas de rechargement (configChanges)
+        if (exitButton != null) positionExitButton();
+    }
+
+    private void confirmLogout() {
+        new AlertDialog.Builder(this)
+                .setMessage(R.string.logout_confirm)
+                .setPositiveButton(R.string.logout, (d, w) -> {
+                    Credentials.clear(this);
+                    backToLogin(null, getString(R.string.logged_out));
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    /**
+     * Cache le bouton quand la page affiche un écran par-dessus la carte (visionneuse, vue
+     * crampons, liste plein écran) : leurs boutons de fermeture sont eux aussi en haut à droite.
+     * Injecté par l'appli ; sans effet si le site n'a pas ces éléments.
+     */
+    private static final String OVERLAY_WATCHER_JS =
+            "(() => { if (window.__exitWatch) return; window.__exitWatch = true;"
+            + " let last = null;"
+            + " const update = () => {"
+            + "   const covered = !!document.querySelector('#photo-lightbox:not([hidden]), #crampon-view:not([hidden]), #app.mobile-list-open');"
+            + "   if (covered !== last) { last = covered; SommetsApp.setExitButtonVisible(!covered); }"
+            + " };"
+            + " new MutationObserver(update).observe(document.body, {subtree: true, attributes: true, attributeFilter: ['hidden', 'class']});"
+            + " update(); })();";
+
     /** Caddy refuse les identifiants (mot de passe changé côté serveur) : retour à la connexion. */
     private void onCredentialsRejected() {
         if (!loggingOut.compareAndSet(false, true)) return;
@@ -173,6 +244,11 @@ public class MainActivity extends Activity {
                 handler.cancel();
                 if (host.equalsIgnoreCase(credentials.host())) onCredentialsRejected();
             }
+        }
+
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            if (isOwnServer(Uri.parse(url))) view.evaluateJavascript(OVERLAY_WATCHER_JS, null);
         }
 
         /** Liens vers d'autres sites (Google Maps, sources…) : ouverts dans le navigateur. */
@@ -237,6 +313,7 @@ public class MainActivity extends Activity {
             customViewCallback = callback;
             root.addView(view, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             webView.setVisibility(View.GONE);
+            exitButton.setVisibility(View.GONE);
             WindowInsetsController c = getWindow().getInsetsController();
             if (c != null) {
                 c.hide(WindowInsets.Type.systemBars());
@@ -250,6 +327,7 @@ public class MainActivity extends Activity {
             root.removeView(customView);
             customView = null;
             webView.setVisibility(View.VISIBLE);
+            exitButton.setVisibility(exitHiddenByPage ? View.GONE : View.VISIBLE);
             WindowInsetsController c = getWindow().getInsetsController();
             if (c != null) c.show(WindowInsets.Type.systemBars());
             if (customViewCallback != null) customViewCallback.onCustomViewHidden();
@@ -309,12 +387,12 @@ public class MainActivity extends Activity {
             }
         }
 
-        /** Bouton « Se déconnecter » de la page (affiché uniquement dans l'appli). */
+        /** Appelé par la surveillance injectée (OVERLAY_WATCHER_JS). */
         @JavascriptInterface
-        public void logout() {
+        public void setExitButtonVisible(boolean visible) {
+            exitHiddenByPage = !visible;
             runOnUiThread(() -> {
-                Credentials.clear(MainActivity.this);
-                backToLogin(null, getString(R.string.logged_out));
+                if (customView == null) exitButton.setVisibility(visible ? View.VISIBLE : View.GONE);
             });
         }
     }

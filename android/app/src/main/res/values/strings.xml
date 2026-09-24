@@ -16,5 +16,8 @@
     <string name="error_rejected">Le serveur a refusé les identifiants enregistrés (mot de passe changé ?). Reconnecte-toi.</string>
     <string name="error_no_app">Aucune application pour ouvrir ce lien.</string>
     <string name="logged_out">Déconnecté.</string>
+    <string name="logout">Se déconnecter</string>
+    <string name="logout_confirm">Se déconnecter ? Le mot de passe sera redemandé au prochain lancement.</string>
+    <string name="cancel">Annuler</string>
     <string name="file_saved">%1$s enregistré dans Téléchargements</string>
 </resources>

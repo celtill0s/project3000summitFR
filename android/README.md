@@ -18,7 +18,9 @@ dépend d'**aucun navigateur** installé sur le téléphone (Chrome, Brave, Duck
   localiser » (autorisation GPS demandée au premier appui), enregistrement des traces GPX dans
   « Téléchargements », vidéos en plein écran, liens externes (Google Maps, sources) ouverts dans
   les applis correspondantes, bouton retour qui ferme la visionneuse ou le panneau avant de
-  quitter, bouton « Se déconnecter » dans la barre latérale.
+  quitter, icône « porte de sortie » en haut à droite de la carte pour se déconnecter
+  (native : fonctionne quelle que soit la version du site ; cachée quand la visionneuse, la vue
+  crampons ou la liste plein écran sont ouvertes, pour ne pas masquer leur bouton de fermeture).
 - Si le mot de passe change côté serveur, l'appli revient d'elle-même à l'écran de connexion.
 - Le contenu (carte, fonctionnalités) vient du serveur : il se met à jour avec `update.sh`, sans
   réinstaller l'APK. Une nouvelle version de l'APK n'est utile que si l'appli elle-même change.
@@ -85,9 +87,9 @@ suivantes : `v1.0.0-beta.2`, `-beta.3`… (jusqu'à 98).
 
 > L'APK n'est qu'une coquille : la carte vient du serveur, donc de `main`. Une bêta testée
 > contre le serveur de production valide la partie native (connexion, hors-ligne, GPS,
-> photos…), mais les ajouts côté site pour l'appli (`static/js/app-bridge.js` : bouton « Se
-> déconnecter », bouton retour, enregistrement des GPX) n'y sont actifs qu'une fois fusionnés
-> dans `main` et déployés.
+> photos, déconnexion…), mais les ajouts côté site pour l'appli (`static/js/app-bridge.js` :
+> bouton retour, enregistrement des GPX) n'y sont actifs qu'une fois fusionnés dans `main` et
+> déployés.
 
 ### 4. Publier la version finale (depuis `main`)
 

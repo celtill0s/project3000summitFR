@@ -34,12 +34,8 @@ export function saveFileNatively(filename, mimeType, text) {
   return nativeApp.saveFile(filename, mimeType, btoa(binary));
 }
 
+// (La déconnexion est un bouton natif de l'appli, indépendant de la version du site.)
 export function initAppBridge() {
   if (!nativeApp) return;
   window.__appBack = appBack;
-  const logout = document.getElementById('app-logout');
-  logout.hidden = false;
-  logout.addEventListener('click', () => {
-    if (confirm('Se déconnecter ? Le mot de passe sera redemandé au prochain lancement.')) nativeApp.logout();
-  });
 }
