@@ -3,6 +3,7 @@ en bout critiques pour la sécurité/l'intégrité des données (traversal, uplo
 N'utilisent jamais le vrai static/mountains.json ni le vrai data/ du dépôt — tout est isolé
 dans un dossier temporaire par test (voir isolated_dirs)."""
 import json
+import re
 import threading
 import urllib.error
 import urllib.parse
@@ -416,3 +417,42 @@ def test_photos_are_cached_long_and_privately(live_server):
     _, result = _upload_photo(live_server, "p.jpg", b"\xff\xd8FAKE")
     with urllib.request.urlopen(f"{live_server}/photos/pic-de-test/{result['filename']}") as r:
         assert r.headers["Cache-Control"].startswith("private, max-age=31536000")
+
+
+def test_index_references_versioned_assets(live_server, isolated_dirs):
+    static_dir, _ = isolated_dirs
+    (static_dir / "js").mkdir()
+    (static_dir / "js" / "main.js").write_text("import './map.js';", encoding="utf-8")
+    (static_dir / "style.css").write_text("body {}", encoding="utf-8")
+    (static_dir / "index.html").write_text(
+        '<link href="style.css"><script type="module" src="js/main.js"></script>'
+        '<a href="#">x</a><a href="https://ign.fr">y</a><img src="/photos/a.jpg">',
+        encoding="utf-8",
+    )
+    with urllib.request.urlopen(f"{live_server}/") as r:
+        assert r.headers["Cache-Control"] == "no-store"
+        html = r.read().decode()
+    m = re.search(r'src="/v/([0-9a-f]{12})/js/main.js"', html)
+    assert m, html
+    version = m.group(1)
+    assert f'href="/v/{version}/style.css"' in html
+    # Liens absolus, externes et ancres : intacts.
+    assert 'href="#"' in html and 'href="https://ign.fr"' in html and 'src="/photos/a.jpg"' in html
+
+    with urllib.request.urlopen(f"{live_server}/v/{version}/js/main.js") as r:
+        assert r.read() == b"import './map.js';"
+        assert "immutable" in r.headers["Cache-Control"]
+
+    # Un fichier modifié (mise à jour) change l'empreinte, donc toutes les URLs.
+    (static_dir / "js" / "main.js").write_text("import './map.js'; // v2", encoding="utf-8")
+    _, body = _get(f"{live_server}/")
+    assert f"/v/{version}/" not in body.decode()
+
+
+def test_versioned_prefix_keeps_whitelist_and_traversal_protection(live_server, isolated_dirs):
+    static_dir, _ = isolated_dirs
+    (static_dir / "secret.py").write_text("x", encoding="utf-8")
+    for url, codes in [("/v/abc/secret.py", (404,)), ("/v/abc/..%2f..%2fserver%2fapp.js", (400, 404)), ("/v/abc", (404,))]:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _get(f"{live_server}{url}")
+        assert exc.value.code in codes, url

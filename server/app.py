@@ -16,6 +16,7 @@ rattachées, pas au nom — renommer un sommet dans le catalogue ne perd donc ri
 Seule dépendance optionnelle : Pillow (+ pillow-heif) pour les miniatures et la conversion
 HEIC → JPEG. Sans elle, les photos originales sont servies telles quelles.
 """
+import hashlib
 import json
 import mimetypes
 import os
@@ -67,6 +68,14 @@ THUMB_SIZES = {480, 1920}
 CACHE_REVALIDATE = "no-cache"
 CACHE_IMMUTABLE = "private, max-age=31536000, immutable"
 CACHE_THUMB = "private, max-age=86400"
+
+# URLs versionnées des fichiers du site : index.html (jamais mis en cache) référence
+# /v/<empreinte>/js/main.js, /v/<empreinte>/style.css… L'empreinte change dès qu'un fichier
+# change, donc chaque mise à jour produit de nouvelles URLs qu'aucun cache (navigateur,
+# Cloudflare…) ne peut servir périmées — y compris les modules importés en relatif par
+# main.js, qui héritent du préfixe. Ces fichiers peuvent alors être cachés longtemps.
+ASSET_PREFIX = "/v/"
+RELATIVE_ASSET_RE = re.compile(r'((?:href|src)=")(?![a-z]+:|/|#)([^"]+)"')
 # Extensions autorisées pour le service de fichiers statiques génériques (style.css, app.js…) —
 # whitelist explicite plutôt que "tout ce qui n'est pas une route API", pour ne jamais exposer
 # par erreur un fichier qui traînerait dans static/ (ex. un .py ou un .bak).
@@ -169,6 +178,26 @@ def merged_peaks():
             merged["gpx"] = f"/gpx/{p['id']}.gpx"
         out.append(merged)
     return out
+
+
+def asset_version() -> str:
+    """Empreinte des fichiers statiques (chemin, taille, date de modification). Recalculée à
+    chaque chargement de page (une vingtaine de stat(), négligeable) : en développement, une
+    modification de fichier change aussitôt l'empreinte, sans redémarrer le serveur."""
+    h = hashlib.sha256()
+    for f in sorted(STATIC_DIR.rglob("*")):
+        if f.is_file() and f.suffix.lower() in STATIC_ASSET_EXTS:
+            st = f.stat()
+            h.update(f"{f.relative_to(STATIC_DIR)}\0{st.st_size}\0{st.st_mtime_ns}\n".encode())
+    return h.hexdigest()[:12]
+
+
+def render_index() -> bytes:
+    """index.html avec ses références relatives (style.css, js/main.js, vendor/…) réécrites
+    vers le préfixe versionné."""
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    prefix = f"{ASSET_PREFIX}{asset_version()}/"
+    return RELATIVE_ASSET_RE.sub(lambda m: f'{m.group(1)}{prefix}{m.group(2)}"', html).encode("utf-8")
 
 
 def validate_gpx(payload: bytes):
@@ -390,7 +419,20 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/healthz":
             self._json(200, {"ok": True})
         elif path in ("/", "/index.html"):
-            self._file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
+            body = render_index()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")  # toujours la dernière empreinte
+            self.end_headers()
+            self._write(body)
+        elif path.startswith(ASSET_PREFIX):
+            # /v/<empreinte>/<fichier> : l'empreinte ne sert qu'à changer l'URL, on sert toujours
+            # le fichier actuel (une vieille page en cache obtient donc des fichiers à jour).
+            parts = unquote(path[len(ASSET_PREFIX):]).split("/", 1)
+            if len(parts) != 2 or Path(parts[1]).suffix.lower() not in STATIC_ASSET_EXTS:
+                raise ApiError(404, "not found")
+            self._file(self._safe_rel_path(STATIC_DIR, parts[1]), cache_control=CACHE_IMMUTABLE)
         elif path == "/mountains.json":
             self._json(200, merged_peaks())
         elif path.startswith("/photos/"):
@@ -402,6 +444,7 @@ class Handler(BaseHTTPRequestHandler):
             rel = unquote(path[len("/gpx/"):])
             self._file(self._safe_rel_path(GPX_DIR, rel))
         elif Path(unquote(path)).suffix.lower() in STATIC_ASSET_EXTS:
+            # URLs non versionnées : conservées (pages en cache d'avant le versionnage), revalidées.
             rel = unquote(path).lstrip("/")
             self._file(self._safe_rel_path(STATIC_DIR, rel))
         else:
