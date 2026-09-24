@@ -5,8 +5,8 @@ dépend d'**aucun navigateur** installé sur le téléphone (Chrome, Brave, Duck
 
 ## Fonctionnement
 
-- **Écran de connexion** au premier lancement : adresse du serveur (préremplie, modifiable :
-  le même APK fonctionne avec n'importe quelle instance) + identifiant et mot de passe du site,
+- **Écran de connexion** au premier lancement : adresse du serveur (à saisir une fois, puis
+  mémorisée ; le même APK fonctionne avec n'importe quelle instance) + identifiant et mot de passe du site,
   c'est-à-dire ceux de la Basic Auth de Caddy. Ils sont vérifiés auprès du serveur avant
   d'entrer, puis mémorisés : le mot de passe est chiffré avec une clé du coffre Android
   (AndroidKeyStore) et exclu des sauvegardes. Le compte `operator` (lecture seule) fonctionne
@@ -72,7 +72,9 @@ Settings → Secrets and variables → Actions → **New repository secret** :
 | `ANDROID_KEY_PASSWORD` | le même mot de passe |
 
 Optionnel, onglet **Variables** : `DEFAULT_SERVER_URL` = adresse de ton instance, préremplie
-sur l'écran de connexion (par défaut : celle de `app/build.gradle.kts`).
+sur l'écran de connexion. Sans elle, le champ est vide et l'adresse se saisit une fois. À savoir :
+l'APK publié dans les Releases est public, et une adresse préremplie y est lisible par qui le
+télécharge. Aucune adresse d'instance n'est écrite dans le code du dépôt.
 
 ### 3. Publier une bêta (depuis `devel`)
 

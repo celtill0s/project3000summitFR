@@ -1,0 +1,11 @@
+# Les actions des workflows sont épinglées sur un identifiant de commit exact (sécurité : une
+# version ne peut pas être remplacée en douce). Dependabot propose chaque semaine une pull request
+# quand une nouvelle version sort, pour ne pas rester figé sur d'anciennes versions.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"

@@ -8,8 +8,10 @@ plugins {
 // transmis par la CI ; valeurs par défaut pour un build local.
 val appVersionName: String = (project.findProperty("appVersionName") as String?) ?: "0.0.0-dev"
 val appVersionCode: Int = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 1
-// Adresse proposée par défaut sur l'écran de connexion (modifiable dans l'appli).
-val defaultServerUrl: String = (project.findProperty("defaultServerUrl") as String?) ?: "https://sommets.celtillos.cloud"
+// Adresse préremplie sur l'écran de connexion. Vide par défaut : aucune adresse d'instance dans
+// le code public. La CI peut en fournir une (variable de dépôt DEFAULT_SERVER_URL), mais elle
+// est alors lisible dans l'APK publié.
+val defaultServerUrl: String = (project.findProperty("defaultServerUrl") as String?) ?: ""
 
 android {
     namespace = "io.github.celtill0s.sommets3000"
