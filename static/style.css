@@ -499,6 +499,25 @@ html, body { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystem
   color: #1b3a2c;
 }
 
+/* Bouton « me localiser » (js/locate.js) : icône cible, bleue quand la localisation est active. */
+.locate-control a {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+.locate-control svg {
+  width: 18px;
+  height: 18px;
+  fill: #1b3a2c;
+  stroke: #1b3a2c;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.locate-control a.active svg {
+  fill: #1a73e8;
+  stroke: #1a73e8;
+}
+
 #legend {
   position: absolute;
   bottom: 18px;

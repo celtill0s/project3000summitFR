@@ -181,6 +181,18 @@ d'une suppression accidentelle, pas d'une panne matérielle. Copie
   Le fond choisi est mémorisé par le navigateur. (Le SCAN 25, la carte
   topo « randonnée » IGN, n'est pas disponible sans clé personnelle.)
 - **Échelle** métrique en bas à gauche de la carte.
+- **Me localiser** : bouton cible (sous le zoom) qui affiche ta position
+  GPS en direct (point bleu + cercle de précision) et recentre la carte
+  une fois ; second appui pour arrêter.
+- **Application installable (PWA)** : sur Android, Chrome propose
+  « Installer l'application » (menu ⋮) ; sur iPhone, Safari → Partager →
+  « Sur l'écran d'accueil ». L'appli s'ouvre alors en plein écran avec sa
+  propre icône, et se met à jour toute seule avec le site. Un service
+  worker (`static/sw.js`) la rend utilisable **hors-ligne** pour ce qui a
+  déjà été consulté avec du réseau : l'appli elle-même, la liste des
+  sommets, les photos et les tuiles de carte déjà affichées (3 000 max).
+  Hors-ligne, les modifications (coché, commentaire, upload) échouent avec
+  un message : elles ne sont pas mises en attente.
 - **Filtres** : par massif (Alpes/Pyrénées), par difficulté, par statut
   (fait / à faire), et recherche texte libre (nom, massif).
 - **Suivi "sommet fait"**, **commentaire personnel**, **photos et

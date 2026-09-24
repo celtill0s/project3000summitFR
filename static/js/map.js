@@ -17,12 +17,14 @@ export const map = L.map('map', { zoomControl: true }).setView([44.8, 4.0], 6);
 // IGN : flux WMTS public de la Géoplateforme (data.geopf.fr), gratuit et sans clé. Le SCAN 25
 // (carte topo « randonnée ») n'y est pas : il exige une clé personnelle. Les tuiles IGN sont
 // vides hors de France (versant espagnol des sommets frontaliers) : OSM reste proposé.
+// crossOrigin : tuiles demandées en CORS (les deux serveurs l'autorisent), pour que le service
+// worker puisse les garder en cache hors-ligne (une réponse opaque ne se met pas en cache).
 const IGN_ATTRIBUTION = '&copy; <a href="https://www.ign.fr/">IGN</a> – Géoplateforme';
 function ignLayer(layer, format, options) {
   return L.tileLayer(
     'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&STYLE=normal' +
     `&TILEMATRIXSET=PM&LAYER=${layer}&FORMAT=${format}&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`,
-    { maxZoom: 19, attribution: IGN_ATTRIBUTION, ...options }
+    { maxZoom: 19, attribution: IGN_ATTRIBUTION, crossOrigin: true, ...options }
   );
 }
 
@@ -31,6 +33,7 @@ function osmLayer(options) {
   return L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    crossOrigin: true,
     ...options
   });
 }

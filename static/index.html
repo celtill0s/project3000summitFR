@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sommets &gt; 3000 m accessibles en randonnée</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+<!-- PWA. crossorigin="use-credentials" : sans lui, le navigateur demande le manifeste SANS les
+     identifiants Basic Auth, reçoit un 401, et l'installation échoue silencieusement. -->
+<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials" />
+<meta name="theme-color" content="#1b3a2c" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
 <link rel="stylesheet" href="vendor/leaflet.markercluster/MarkerCluster.css" />
 <link rel="stylesheet" href="vendor/leaflet.markercluster/MarkerCluster.Default.css" />

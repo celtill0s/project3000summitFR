@@ -79,7 +79,7 @@ RELATIVE_ASSET_RE = re.compile(r'((?:href|src)=")(?![a-z]+:|/|#)([^"]+)"')
 # Extensions autorisées pour le service de fichiers statiques génériques (style.css, app.js…) —
 # whitelist explicite plutôt que "tout ce qui n'est pas une route API", pour ne jamais exposer
 # par erreur un fichier qui traînerait dans static/ (ex. un .py ou un .bak).
-STATIC_ASSET_EXTS = {".css", ".js", ".png", ".jpg", ".jpeg", ".svg", ".ico"}
+STATIC_ASSET_EXTS = {".css", ".js", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".webmanifest"}
 
 # Tout est servi depuis la même origine (Leaflet est vendorisé dans static/vendor/) : seules
 # les tuiles de carte (OpenStreetMap, IGN Géoplateforme) viennent d'ailleurs. 'unsafe-inline' pour les styles uniquement
@@ -90,7 +90,11 @@ CONTENT_SECURITY_POLICY = "; ".join([
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https://tile.openstreetmap.org https://data.geopf.fr",
     "media-src 'self' blob:",
-    "connect-src 'self'",
+    # Tuiles aussi en connect-src : le service worker (PWA) les récupère via fetch() pour les
+    # garder en cache hors-ligne.
+    "connect-src 'self' https://tile.openstreetmap.org https://data.geopf.fr",
+    "worker-src 'self'",
+    "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -98,6 +102,7 @@ CONTENT_SECURITY_POLICY = "; ".join([
 ])
 
 mimetypes.add_type("application/gpx+xml", ".gpx")
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 lock = threading.Lock()
 

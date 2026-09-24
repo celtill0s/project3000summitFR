@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "name": "Sommets de plus de 3000 m",
+  "short_name": "Sommets 3000",
+  "description": "Carte des sommets de plus de 3000 m des Alpes et des Pyrénées françaises accessibles à pied, avec suivi personnel (faits, commentaires, photos, traces GPX).",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f5f3ee",
+  "theme_color": "#1b3a2c",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -16,4 +16,16 @@ export default [
       "no-unused-vars": ["error", { args: "none" }],
     },
   },
+  {
+    files: ["static/sw.js"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "script",
+      globals: { ...globals.serviceworker },
+    },
+    rules: {
+      "no-undef": "error",
+      "no-unused-vars": ["error", { args: "none" }],
+    },
+  },
 ];

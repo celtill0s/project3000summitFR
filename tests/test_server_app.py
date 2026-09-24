@@ -456,3 +456,26 @@ def test_versioned_prefix_keeps_whitelist_and_traversal_protection(live_server, 
         with pytest.raises(urllib.error.HTTPError) as exc:
             _get(f"{live_server}{url}")
         assert exc.value.code in codes, url
+
+
+def test_pwa_files_are_served(live_server, isolated_dirs):
+    static_dir, _ = isolated_dirs
+    (static_dir / "manifest.webmanifest").write_text('{"name": "x"}', encoding="utf-8")
+    (static_dir / "sw.js").write_text("self.addEventListener('fetch', () => {});", encoding="utf-8")
+    (static_dir / "index.html").write_text(
+        '<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials" />',
+        encoding="utf-8",
+    )
+    _, html = _get(f"{live_server}/")
+    m = re.search(r'href="(/v/[0-9a-f]{12}/manifest.webmanifest)" crossorigin="use-credentials"', html.decode())
+    assert m, html
+    with urllib.request.urlopen(f"{live_server}{m.group(1)}") as r:
+        assert r.headers["Content-Type"] == "application/manifest+json"
+    # Service worker à la racine (portée = tout le site), revalidé à chaque fois, et autorisé
+    # par sa propre CSP à récupérer les tuiles.
+    with urllib.request.urlopen(f"{live_server}/sw.js") as r:
+        assert r.headers["Content-Type"] == "text/javascript"
+        assert r.headers["Cache-Control"] == "no-cache"
+        csp = r.headers["Content-Security-Policy"]
+        assert "https://tile.openstreetmap.org" in csp.split("connect-src")[1].split(";")[0]
+        assert "https://data.geopf.fr" in csp.split("connect-src")[1].split(";")[0]
