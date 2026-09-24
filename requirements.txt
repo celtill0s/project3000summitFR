@@ -1,0 +1,4 @@
+# Optionnelles : miniatures des photos et conversion HEIC -> JPEG (voir server/app.py).
+# Sans elles, le serveur fonctionne (bibliothèque standard uniquement) et sert les originaux.
+pillow>=11
+pillow-heif>=0.20

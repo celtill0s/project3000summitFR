@@ -9,6 +9,12 @@ coché, commentaire, photos/vidéos, trace GPX.
 Toute écriture (coché/commentaire/upload) passe par ce serveur et va
 directement sur le disque local (data/) — pas de localStorage, pas
 d'IndexedDB, pas de dépendance au navigateur.
+
+Chaque sommet est identifié par son champ "id" (stable) : les données personnelles y sont
+rattachées, pas au nom — renommer un sommet dans le catalogue ne perd donc rien.
+
+Seule dépendance optionnelle : Pillow (+ pillow-heif) pour les miniatures et la conversion
+HEIC → JPEG. Sans elle, les photos originales sont servies telles quelles.
 """
 import json
 import mimetypes
@@ -18,11 +24,20 @@ import secrets
 import threading
 import traceback
 import unicodedata
-from email import message_from_bytes
-from email.policy import default as email_default_policy
+import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
+
+try:
+    from PIL import Image, ImageOps
+    try:
+        from pillow_heif import register_heif_opener
+        register_heif_opener()
+    except ImportError:  # pragma: no cover - HEIC simplement non converti
+        pass
+except ImportError:  # pragma: no cover - dépend de l'environnement
+    Image = None
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(os.environ.get("STATIC_DIR", ROOT / "static"))
@@ -31,6 +46,7 @@ CATALOG_PATH = STATIC_DIR / "mountains.json"
 PROGRESS_PATH = DATA_DIR / "progress.json"
 PHOTOS_DIR = DATA_DIR / "photos"
 GPX_DIR = DATA_DIR / "gpx"
+THUMBS_DIR = DATA_DIR / "thumbs"
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif"}
 VIDEO_EXTS = {".mp4", ".webm", ".mov", ".m4v", ".ogv", ".avi", ".mkv"}
@@ -38,14 +54,42 @@ MAX_IMAGE_BYTES = 25 * 1024 * 1024
 MAX_VIDEO_BYTES = 500 * 1024 * 1024
 MAX_GPX_BYTES = 20 * 1024 * 1024
 MAX_JSON_BYTES = 256 * 1024
+CHUNK_BYTES = 1024 * 1024
+# Tailles (plus grand côté, en px) des images redimensionnées servies sous /thumbs/ :
+# 480 pour la grille de miniatures, 1920 pour la visionneuse quand l'original n'est pas
+# affichable partout (HEIC).
+THUMB_SIZES = {480, 1920}
 # Extensions autorisées pour le service de fichiers statiques génériques (style.css, app.js…) —
 # whitelist explicite plutôt que "tout ce qui n'est pas une route API", pour ne jamais exposer
 # par erreur un fichier qui traînerait dans static/ (ex. un .py ou un .bak).
 STATIC_ASSET_EXTS = {".css", ".js", ".png", ".jpg", ".jpeg", ".svg", ".ico"}
 
+# Tout est servi depuis la même origine (Leaflet est vendorisé dans static/vendor/) : seules
+# les tuiles OpenStreetMap viennent d'ailleurs. 'unsafe-inline' pour les styles uniquement
+# (attributs style="" générés par le frontend), jamais pour les scripts.
+CONTENT_SECURITY_POLICY = "; ".join([
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https://*.tile.openstreetmap.org",
+    "media-src 'self' blob:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+])
+
 mimetypes.add_type("application/gpx+xml", ".gpx")
 
 lock = threading.Lock()
+
+
+class ApiError(Exception):
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status
+        self.message = message
 
 
 def slugify(name: str) -> str:
@@ -60,11 +104,39 @@ def load_catalog():
         return json.load(f)
 
 
-def load_progress():
+def find_peak(catalog, peak_id):
+    for p in catalog:
+        if p["id"] == peak_id:
+            return p
+    raise KeyError(peak_id)
+
+
+def migrate_progress(progress, catalog):
+    """Rattache à l'id du sommet les entrées de progress.json encore indexées par son nom
+    (format d'avant les ids). Renvoie (progress, changé ?, clés orphelines)."""
+    ids = {p["id"] for p in catalog}
+    id_by_name = {p["name"]: p["id"] for p in catalog}
+    changed = False
+    orphans = []
+    for key in list(progress):
+        if key in ids:
+            continue
+        if key in id_by_name:
+            target = progress.setdefault(id_by_name[key], {})
+            for field, value in progress.pop(key).items():
+                target.setdefault(field, value)
+            changed = True
+        else:
+            orphans.append(key)
+    return progress, changed, orphans
+
+
+def load_progress(catalog=None):
     if not PROGRESS_PATH.exists():
         return {}
     with open(PROGRESS_PATH, encoding="utf-8") as f:
-        return json.load(f)
+        progress = json.load(f)
+    return migrate_progress(progress, catalog if catalog is not None else load_catalog())[0]
 
 
 def save_progress(data):
@@ -77,32 +149,64 @@ def save_progress(data):
 
 def merged_peaks():
     catalog = load_catalog()
-    progress = load_progress()
+    progress = load_progress(catalog)
     out = []
     for p in catalog:
-        overlay = progress.get(p["name"], {})
+        overlay = progress.get(p["id"], {})
         merged = dict(p)
         merged["done"] = bool(overlay.get("done", False))
         merged["comment"] = overlay.get("comment", "")
         merged["photos"] = [ph["filename"] for ph in overlay.get("photos", [])]
         if overlay.get("gpx"):
-            merged["gpx"] = f"/gpx/{slugify(p['name'])}.gpx"
+            merged["gpx"] = f"/gpx/{p['id']}.gpx"
         out.append(merged)
     return out
 
 
-def parse_multipart(content_type: str, body: bytes):
-    """Réutilise le vrai parseur MIME de la stdlib (module email) pour lire un
-    multipart/form-data : cgi.FieldStorage n'existe plus depuis Python 3.13."""
-    header = f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode()
-    msg = message_from_bytes(header + body, policy=email_default_policy)
-    parts = {}
-    if msg.is_multipart():
-        for part in msg.iter_parts():
-            name = part.get_param("name", header="Content-Disposition")
-            if name:
-                parts[name] = part
-    return parts
+def validate_gpx(payload: bytes):
+    # Pas de DTD/entités : un GPX légitime n'en a jamais besoin, et ça écarte d'office les
+    # attaques par expansion d'entités ("billion laughs").
+    if b"<!DOCTYPE" in payload or b"<!ENTITY" in payload:
+        raise ApiError(400, "GPX invalide : DOCTYPE/ENTITY non autorisés")
+    try:
+        root = ET.fromstring(payload)
+    except ET.ParseError:
+        raise ApiError(400, "GPX invalide : XML mal formé")
+    if root.tag.rsplit("}", 1)[-1] != "gpx":
+        raise ApiError(400, "GPX invalide : l'élément racine doit être <gpx>")
+
+
+def parse_range(header, size):
+    """Interprète un en-tête "Range: bytes=..." (une seule plage). Renvoie (début, fin
+    incluse), None si l'en-tête est absent/ignoré, ou lève ApiError(416) si insatisfiable."""
+    m = re.fullmatch(r"bytes=(\d*)-(\d*)", (header or "").strip())
+    if not m or m.group(1) == m.group(2) == "":
+        return None
+    start_s, end_s = m.groups()
+    if start_s == "":  # suffixe : les N derniers octets
+        start, end = max(0, size - int(end_s)), size - 1
+    else:
+        start = int(start_s)
+        end = min(int(end_s), size - 1) if end_s else size - 1
+    if start >= size or start > end:
+        raise ApiError(416, "plage invalide")
+    return start, end
+
+
+def make_thumbnail(src: Path, dest: Path, size: int):
+    """Génère une version JPEG redimensionnée (orientation EXIF appliquée). Écrit dans un
+    fichier temporaire puis renomme : deux requêtes simultanées ne produisent jamais un
+    fichier à moitié écrit."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(f".{dest.name}.{secrets.token_hex(4)}.tmp")
+    try:
+        with Image.open(src) as im:
+            im = ImageOps.exif_transpose(im)
+            im.thumbnail((size, size))
+            im.convert("RGB").save(tmp, "JPEG", quality=82, optimize=True)
+        os.replace(tmp, dest)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -110,6 +214,16 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     # ---- utilitaires de réponse ----
+    def end_headers(self):
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "same-origin")
+        self.send_header("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+        super().end_headers()
+
+    def _write(self, data: bytes):
+        if self.command != "HEAD":
+            self.wfile.write(data)
+
     def _json(self, status, obj):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -117,7 +231,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(body)
+        self._write(body)
 
     def _server_error(self):
         # Le détail de l'exception reste dans les logs serveur, jamais renvoyé au client.
@@ -125,242 +239,300 @@ class Handler(BaseHTTPRequestHandler):
         self._json(500, {"error": "erreur interne"})
 
     def _file(self, path: Path, content_type=None, cache=True):
+        """Sert un fichier par morceaux (jamais chargé entièrement en mémoire), avec support
+        des requêtes Range — indispensable pour lire/avancer dans une vidéo, et exigé par
+        Safari iOS pour lire la moindre vidéo."""
         try:
             resolved = path.resolve()
         except OSError:
-            self._json(404, {"error": "not found"})
-            return
+            raise ApiError(404, "not found")
         if not resolved.is_file():
-            self._json(404, {"error": "not found"})
-            return
-        data = resolved.read_bytes()
-        self.send_response(200)
+            raise ApiError(404, "not found")
+        size = resolved.stat().st_size
+        byte_range = parse_range(self.headers.get("Range"), size) if size else None
+        start, end = byte_range or (0, size - 1)
+        length = end - start + 1 if size else 0
+        self.send_response(206 if byte_range else 200)
         self.send_header("Content-Type", content_type or mimetypes.guess_type(str(resolved))[0] or "application/octet-stream")
-        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Length", str(length))
+        self.send_header("Accept-Ranges", "bytes")
+        if byte_range:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.send_header("Cache-Control", "public, max-age=60" if cache else "no-store")
         self.end_headers()
-        self.wfile.write(data)
+        if self.command == "HEAD":
+            return
+        with open(resolved, "rb") as f:
+            f.seek(start)
+            remaining = length
+            while remaining > 0:
+                chunk = f.read(min(CHUNK_BYTES, remaining))
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                remaining -= len(chunk)
+
+    def _content_length(self, max_bytes):
+        raw = self.headers.get("Content-Length")
+        if raw is None:
+            self.close_connection = True
+            raise ApiError(411, "Content-Length requis")
+        try:
+            length = int(raw)
+        except ValueError:
+            self.close_connection = True
+            raise ApiError(400, "Content-Length invalide")
+        if length > max_bytes:
+            # Corps non lu : la connexion ne peut pas être réutilisée pour une autre requête.
+            self.close_connection = True
+            raise ApiError(413, "fichier trop volumineux")
+        return length
 
     def _read_body(self, max_bytes):
-        length = int(self.headers.get("Content-Length", 0))
-        if length <= 0:
-            return b""
-        if length > max_bytes:
-            raise ValueError("payload trop volumineux")
-        return self.rfile.read(length)
+        length = self._content_length(max_bytes)
+        return self.rfile.read(length) if length > 0 else b""
 
-    def _peak_name_from_path(self, prefix, path):
-        rest = path[len(prefix):]
+    def _read_json(self):
+        try:
+            return json.loads(self._read_body(MAX_JSON_BYTES) or b"{}")
+        except json.JSONDecodeError:
+            raise ApiError(400, "JSON invalide")
+
+    def _stream_body_to(self, dest: Path, max_bytes):
+        """Écrit le corps de la requête sur disque par morceaux de 1 Mo : même une vidéo de
+        500 Mo ne passe jamais entièrement en mémoire (important sur un Raspberry Pi)."""
+        remaining = self._content_length(max_bytes)
+        if remaining == 0:
+            raise ApiError(400, "fichier vide")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(f".{dest.name}.upload")
+        try:
+            with open(tmp, "wb") as f:
+                while remaining > 0:
+                    chunk = self.rfile.read(min(CHUNK_BYTES, remaining))
+                    if not chunk:
+                        raise ApiError(400, "envoi interrompu")
+                    f.write(chunk)
+                    remaining -= len(chunk)
+            os.replace(tmp, dest)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            self.close_connection = True
+            raise
+
+    def _route_peak(self, path):
+        """/api/peaks/<id>/<suite> -> (id, suite)."""
+        rest = path[len("/api/peaks/"):]
         parts = rest.split("/", 1)
-        name = unquote(parts[0])
-        tail = parts[1] if len(parts) > 1 else ""
-        return name, tail
-
-    def _require_known_peak(self, catalog, name):
-        if not any(p["name"] == name for p in catalog):
-            raise KeyError(name)
+        return unquote(parts[0]), (parts[1] if len(parts) > 1 else "")
 
     # ---- anti path-traversal : ne jamais faire confiance à un chemin fourni par le client ----
     def _safe_rel_path(self, base: Path, rel: str) -> Path:
         candidate = (base / rel).resolve()
         base_resolved = base.resolve()
         if base_resolved not in candidate.parents and candidate != base_resolved:
-            raise ValueError("chemin invalide")
+            raise ApiError(400, "chemin invalide")
         return candidate
 
-    # ---- routes GET ----
-    def do_GET(self):
-        parsed = urlparse(self.path)
-        path = parsed.path
+    def _dispatch(self, handler):
         try:
-            if path == "/healthz":
-                self._json(200, {"ok": True})
-            elif path in ("/", "/index.html"):
-                self._file(STATIC_DIR / "index.html", "text/html; charset=utf-8", cache=False)
-            elif path == "/mountains.json":
-                self._json(200, merged_peaks())
-            elif path.startswith("/photos/"):
-                rel = unquote(path[len("/photos/"):])
-                self._file(self._safe_rel_path(PHOTOS_DIR, rel))
-            elif path.startswith("/gpx/"):
-                rel = unquote(path[len("/gpx/"):])
-                self._file(self._safe_rel_path(GPX_DIR, rel), cache=False)
-            elif Path(unquote(path)).suffix.lower() in STATIC_ASSET_EXTS:
-                rel = unquote(path).lstrip("/")
-                self._file(self._safe_rel_path(STATIC_DIR, rel))
-            else:
-                self._json(404, {"error": "not found"})
-        except ValueError:
-            self._json(400, {"error": "chemin invalide"})
-        except Exception:  # pragma: no cover - filet de sécurité
-            self._server_error()
-
-    def do_DELETE(self):
-        path = urlparse(self.path).path
-        try:
-            if path.startswith("/api/peaks/"):
-                name, tail = self._peak_name_from_path("/api/peaks/", path)
-                if tail.startswith("photos/"):
-                    filename = unquote(tail[len("photos/"):])
-                    self._delete_photo(name, filename)
-                elif tail == "gpx":
-                    self._delete_gpx(name)
-                else:
-                    self._json(404, {"error": "route inconnue"})
-            else:
-                self._json(404, {"error": "not found"})
+            handler(urlparse(self.path))
+            return
+        except ApiError as e:
+            self._json(e.status, {"error": e.message})
         except KeyError:
             self._json(404, {"error": "sommet inconnu"})
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True  # client parti (ex. vidéo refermée) : rien à répondre
         except Exception:
             self._server_error()
+        # Après une erreur, le corps d'un POST a pu rester (partiellement) non lu : la connexion
+        # ne doit pas être réutilisée, sinon ces octets seraient pris pour la requête suivante.
+        if self.command == "POST":
+            self.close_connection = True
+
+    # ---- routes ----
+    def do_GET(self):
+        self._dispatch(self._get)
+
+    def do_HEAD(self):
+        self._dispatch(self._get)
 
     def do_POST(self):
-        path = urlparse(self.path).path
-        try:
-            if path.startswith("/api/peaks/"):
-                name, tail = self._peak_name_from_path("/api/peaks/", path)
-                if tail == "done":
-                    body = json.loads(self._read_body(MAX_JSON_BYTES) or b"{}")
-                    self._set_done(name, bool(body.get("done")))
-                elif tail == "comment":
-                    body = json.loads(self._read_body(MAX_JSON_BYTES) or b"{}")
-                    self._set_comment(name, str(body.get("comment", ""))[:20000])
-                elif tail == "photos":
-                    self._add_photo(name)
-                elif tail == "gpx":
-                    self._add_gpx(name)
-                else:
-                    self._json(404, {"error": "route inconnue"})
-            else:
-                self._json(404, {"error": "not found"})
-        except KeyError:
-            self._json(404, {"error": "sommet inconnu"})
-        # JSONDecodeError hérite de ValueError : doit être intercepté AVANT, sinon un JSON
-        # invalide serait signalé comme "payload trop volumineux" (413).
-        except json.JSONDecodeError:
-            self._json(400, {"error": "JSON invalide"})
-        except ValueError as e:
-            self._json(413, {"error": str(e)})
-        except Exception:
-            self._server_error()
+        self._dispatch(self._post)
+
+    def do_DELETE(self):
+        self._dispatch(self._delete)
+
+    def _get(self, parsed):
+        path = parsed.path
+        if path == "/healthz":
+            self._json(200, {"ok": True})
+        elif path in ("/", "/index.html"):
+            self._file(STATIC_DIR / "index.html", "text/html; charset=utf-8", cache=False)
+        elif path == "/mountains.json":
+            self._json(200, merged_peaks())
+        elif path.startswith("/photos/"):
+            rel = unquote(path[len("/photos/"):])
+            self._file(self._safe_rel_path(PHOTOS_DIR, rel))
+        elif path.startswith("/thumbs/"):
+            self._thumb(unquote(path[len("/thumbs/"):]))
+        elif path.startswith("/gpx/"):
+            rel = unquote(path[len("/gpx/"):])
+            self._file(self._safe_rel_path(GPX_DIR, rel), cache=False)
+        elif Path(unquote(path)).suffix.lower() in STATIC_ASSET_EXTS:
+            rel = unquote(path).lstrip("/")
+            self._file(self._safe_rel_path(STATIC_DIR, rel))
+        else:
+            raise ApiError(404, "not found")
+
+    def _post(self, parsed):
+        path = parsed.path
+        if not path.startswith("/api/peaks/"):
+            raise ApiError(404, "not found")
+        peak_id, tail = self._route_peak(path)
+        if tail == "done":
+            self._set_field(peak_id, "done", bool(self._read_json().get("done")))
+        elif tail == "comment":
+            self._set_field(peak_id, "comment", str(self._read_json().get("comment", ""))[:20000])
+        elif tail == "photos":
+            filename = parse_qs(parsed.query).get("filename", [""])[0]
+            self._add_photo(peak_id, filename)
+        elif tail == "gpx":
+            self._add_gpx(peak_id)
+        else:
+            raise ApiError(404, "route inconnue")
+
+    def _delete(self, parsed):
+        path = parsed.path
+        if not path.startswith("/api/peaks/"):
+            raise ApiError(404, "not found")
+        peak_id, tail = self._route_peak(path)
+        if tail.startswith("photos/"):
+            self._delete_photo(peak_id, unquote(tail[len("photos/"):]))
+        elif tail == "gpx":
+            self._delete_gpx(peak_id)
+        else:
+            raise ApiError(404, "route inconnue")
 
     # ---- actions ----
-    def _set_done(self, name, done):
+    def _thumb(self, rel):
+        """/thumbs/<id>/<taille>/<fichier> : version JPEG redimensionnée d'une photo, générée
+        à la première demande puis mise en cache dans data/thumbs/. Sans Pillow (ou si
+        l'image est illisible), l'original est servi à la place."""
+        parts = rel.split("/")
+        if len(parts) != 3 or not parts[1].isdigit() or int(parts[1]) not in THUMB_SIZES:
+            raise ApiError(404, "not found")
+        peak_id, size, filename = parts[0], int(parts[1]), parts[2]
+        src = self._safe_rel_path(PHOTOS_DIR, f"{peak_id}/{filename}")
+        if not src.is_file():
+            raise ApiError(404, "not found")
+        if Image is None or src.suffix.lower() not in IMAGE_EXTS:
+            self._file(src)
+            return
+        dest = self._safe_rel_path(THUMBS_DIR, f"{peak_id}/{size}/{filename}.jpg")
+        if not dest.is_file():
+            try:
+                make_thumbnail(src, dest, size)
+            except Exception:
+                traceback.print_exc()
+                self._file(src)
+                return
+        self._file(dest, "image/jpeg")
+
+    def _set_field(self, peak_id, field, value):
         with lock:
             catalog = load_catalog()
-            self._require_known_peak(catalog, name)
-            progress = load_progress()
-            progress.setdefault(name, {})["done"] = done
+            find_peak(catalog, peak_id)
+            progress = load_progress(catalog)
+            progress.setdefault(peak_id, {})[field] = value
             save_progress(progress)
         self._json(200, {"ok": True})
 
-    def _set_comment(self, name, comment):
-        with lock:
-            catalog = load_catalog()
-            self._require_known_peak(catalog, name)
-            progress = load_progress()
-            progress.setdefault(name, {})["comment"] = comment
-            save_progress(progress)
-        self._json(200, {"ok": True})
-
-    def _add_photo(self, name):
-        content_type = self.headers.get("Content-Type", "")
-        if "multipart/form-data" not in content_type:
-            self._json(400, {"error": "attendu multipart/form-data"})
-            return
-        body = self._read_body(MAX_VIDEO_BYTES)
-        parts = parse_multipart(content_type, body)
-        part = parts.get("file")
-        if part is None:
-            self._json(400, {"error": "champ 'file' manquant"})
-            return
-        filename = part.get_filename() or "fichier"
-        payload = part.get_payload(decode=True) or b""
+    def _add_photo(self, peak_id, filename):
+        find_peak(load_catalog(), peak_id)
         ext = Path(filename).suffix.lower()
         is_video = ext in VIDEO_EXTS
-        is_image = ext in IMAGE_EXTS
-        if not (is_video or is_image):
-            self._json(400, {"error": f"extension non supportée : {ext or '(aucune)'}"})
-            return
-        limit = MAX_VIDEO_BYTES if is_video else MAX_IMAGE_BYTES
-        if len(payload) > limit:
-            self._json(413, {"error": "fichier trop volumineux"})
-            return
+        if not (is_video or ext in IMAGE_EXTS):
+            self.close_connection = True
+            raise ApiError(400, f"extension non supportée : {ext or '(aucune)'}")
+        safe_name = f"{secrets.token_hex(4)}{ext}"
+        # L'écriture (potentiellement longue) se fait hors du verrou ; seule la mise à jour de
+        # progress.json, instantanée, est sérialisée.
+        self._stream_body_to(PHOTOS_DIR / peak_id / safe_name, MAX_VIDEO_BYTES if is_video else MAX_IMAGE_BYTES)
         with lock:
-            catalog = load_catalog()
-            self._require_known_peak(catalog, name)
-            slug = slugify(name)
-            peak_dir = PHOTOS_DIR / slug
-            peak_dir.mkdir(parents=True, exist_ok=True)
-            safe_name = f"{secrets.token_hex(4)}{ext}"
-            (peak_dir / safe_name).write_bytes(payload)
             progress = load_progress()
-            entry = progress.setdefault(name, {})
-            entry.setdefault("photos", []).append({
+            progress.setdefault(peak_id, {}).setdefault("photos", []).append({
                 "filename": safe_name,
                 "type": "video" if is_video else "image",
             })
             save_progress(progress)
         self._json(200, {"ok": True, "filename": safe_name, "isVideo": is_video})
 
-    def _delete_photo(self, name, filename):
+    def _delete_photo(self, peak_id, filename):
         with lock:
             catalog = load_catalog()
-            self._require_known_peak(catalog, name)
-            slug = slugify(name)
+            find_peak(catalog, peak_id)
             safe_name = Path(filename).name  # anti path-traversal : seul le nom de fichier est gardé
-            target = PHOTOS_DIR / slug / safe_name
-            if target.is_file():
-                target.unlink()
-            progress = load_progress()
-            entry = progress.setdefault(name, {})
+            (PHOTOS_DIR / peak_id / safe_name).unlink(missing_ok=True)
+            for size in THUMB_SIZES:
+                (THUMBS_DIR / peak_id / str(size) / f"{safe_name}.jpg").unlink(missing_ok=True)
+            progress = load_progress(catalog)
+            entry = progress.setdefault(peak_id, {})
             entry["photos"] = [ph for ph in entry.get("photos", []) if ph["filename"] != safe_name]
             save_progress(progress)
         self._json(200, {"ok": True})
 
-    def _add_gpx(self, name):
-        content_type = self.headers.get("Content-Type", "")
-        if "multipart/form-data" not in content_type:
-            self._json(400, {"error": "attendu multipart/form-data"})
-            return
-        body = self._read_body(MAX_GPX_BYTES)
-        parts = parse_multipart(content_type, body)
-        part = parts.get("file")
-        if part is None:
-            self._json(400, {"error": "champ 'file' manquant"})
-            return
-        payload = part.get_payload(decode=True) or b""
+    def _add_gpx(self, peak_id):
+        find_peak(load_catalog(), peak_id)
+        payload = self._read_body(MAX_GPX_BYTES)
+        validate_gpx(payload)
         with lock:
-            catalog = load_catalog()
-            self._require_known_peak(catalog, name)
-            slug = slugify(name)
             GPX_DIR.mkdir(parents=True, exist_ok=True)
-            (GPX_DIR / f"{slug}.gpx").write_bytes(payload)
+            tmp = GPX_DIR / f".{peak_id}.gpx.tmp"
+            tmp.write_bytes(payload)
+            os.replace(tmp, GPX_DIR / f"{peak_id}.gpx")
             progress = load_progress()
-            progress.setdefault(name, {})["gpx"] = f"{slug}.gpx"
+            progress.setdefault(peak_id, {})["gpx"] = f"{peak_id}.gpx"
             save_progress(progress)
         self._json(200, {"ok": True})
 
-    def _delete_gpx(self, name):
+    def _delete_gpx(self, peak_id):
         with lock:
             catalog = load_catalog()
-            self._require_known_peak(catalog, name)
-            slug = slugify(name)
-            target = GPX_DIR / f"{slug}.gpx"
-            if target.is_file():
-                target.unlink()
-            progress = load_progress()
-            entry = progress.setdefault(name, {})
-            entry.pop("gpx", None)
+            find_peak(catalog, peak_id)
+            (GPX_DIR / f"{peak_id}.gpx").unlink(missing_ok=True)
+            progress = load_progress(catalog)
+            progress.setdefault(peak_id, {}).pop("gpx", None)
             save_progress(progress)
         self._json(200, {"ok": True})
+
+
+def migrate_on_startup():
+    """Convertit une fois pour toutes progress.json au format indexé par id, et signale les
+    entrées qui ne correspondent plus à aucun sommet (sommet renommé avant l'arrivée des ids,
+    ou retiré du catalogue) : elles sont conservées telles quelles, jamais supprimées."""
+    if not PROGRESS_PATH.exists():
+        return
+    catalog = load_catalog()
+    with open(PROGRESS_PATH, encoding="utf-8") as f:
+        progress = json.load(f)
+    progress, changed, orphans = migrate_progress(progress, catalog)
+    if changed:
+        save_progress(progress)
+        print("progress.json migré : données rattachées aux ids des sommets")
+    for key in orphans:
+        print(f"⚠️  progress.json : entrée « {key} » sans sommet correspondant dans le catalogue "
+              f"(renommé ou supprimé ?) — conservée, mais invisible dans l'appli")
 
 
 def main():
     port = int(os.environ.get("PORT", 8000))
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    (DATA_DIR / "photos").mkdir(exist_ok=True)
-    (DATA_DIR / "gpx").mkdir(exist_ok=True)
+    for d in (DATA_DIR, PHOTOS_DIR, GPX_DIR, THUMBS_DIR):
+        d.mkdir(parents=True, exist_ok=True)
+    migrate_on_startup()
+    if Image is None:
+        print("Pillow absent : pas de miniatures, les photos originales sont servies telles quelles")
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     print(f"project3000summitFR backend listening on :{port} (data={DATA_DIR})")
     server.serve_forever()

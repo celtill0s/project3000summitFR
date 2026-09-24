@@ -2,14 +2,14 @@
 de frappe lors de l'ajout/la modification d'un sommet (champ manquant, cotation inconnue,
 coordonnées inversées, doublon…)."""
 import json
+import re
 from pathlib import Path
 
 import pytest
 
-from server.app import slugify
-
 CATALOG_PATH = Path(__file__).resolve().parent.parent / "static" / "mountains.json"
 REQUIRED_FIELDS = {
+    "id": str,
     "name": str,
     "altitude_m": int,
     "lat": float,
@@ -54,6 +54,14 @@ def test_peak_entry_is_valid(peak):
     assert LAT_RANGE[0] <= peak["lat"] <= LAT_RANGE[1], "latitude hors emprise (lat/lon inversés ?)"
     assert LON_RANGE[0] <= peak["lon"] <= LON_RANGE[1], "longitude hors emprise (lat/lon inversés ?)"
     assert peak["source_url"].startswith("https://")
+    # L'id sert de clé dans data/progress.json ET de nom de dossier (photos, gpx) : format
+    # strict, et il ne doit JAMAIS changer une fois publié (même si le nom est corrigé).
+    assert re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", peak["id"]), "id invalide (a-z, 0-9, tirets)"
+    if "crampon" in peak:
+        c = peak["crampon"]
+        assert set(c) == {"grade", "confirmed", "season", "note"}
+        assert isinstance(c["confirmed"], bool)
+        assert all(isinstance(c[k], str) and c[k].strip() for k in ("grade", "season", "note"))
 
 
 def test_peak_names_are_unique():
@@ -61,8 +69,6 @@ def test_peak_names_are_unique():
     assert len(names) == len(set(names))
 
 
-def test_peak_slugs_are_unique():
-    # Les photos (data/photos/<slug>/) et traces GPX (data/gpx/<slug>.gpx) sont rangées par
-    # slug : deux sommets au même slug partageraient leurs fichiers.
-    slugs = [slugify(p["name"]) for p in CATALOG]
-    assert len(slugs) == len(set(slugs))
+def test_peak_ids_are_unique():
+    ids = [p["id"] for p in CATALOG]
+    assert len(ids) == len(set(ids))

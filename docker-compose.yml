@@ -16,7 +16,8 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     depends_on:
-      - app
+      app:
+        condition: service_healthy
     # Identifiants Basic Auth lus depuis des secrets fichiers (secrets/), jamais depuis un .env :
     # un secret Docker est monté en lecture seule dans /run/secrets/, pas visible via
     # `docker inspect` (contrairement à une variable d'environnement classique).

@@ -1,5 +1,6 @@
 [
   {
+    "id": "aiguille-de-la-grande-sassiere",
     "name": "Aiguille de la Grande Sassière",
     "altitude_m": 3747,
     "lat": 45.505,
@@ -9,9 +10,16 @@
     "difficulty": "T4",
     "notes": "Un des 3000 les plus hauts d'Europe accessible sans matériel d'alpinisme, arête rocheuse (voie normale évite le glacier).",
     "source": "hexatrek.com",
-    "source_url": "https://www.camptocamp.org/routes/54599"
+    "source_url": "https://www.camptocamp.org/routes/54599",
+    "crampon": {
+      "grade": "F à PD",
+      "confirmed": true,
+      "season": "Fin octobre – novembre",
+      "note": "Selon conditions ; forum camptocamp : crampons+piolet obligatoires en fin de saison, pentes gelées même sans neige fraîche."
+    }
   },
   {
+    "id": "ouille-noire",
     "name": "Ouille Noire",
     "altitude_m": 3357,
     "lat": 45.4065,
@@ -21,9 +29,16 @@
     "difficulty": "T3",
     "notes": "Accès relativement facile depuis Val-d'Isère / Bonneval-sur-Arc.",
     "source": "altituderando.com",
-    "source_url": "https://www.camptocamp.org/routes/55120"
+    "source_url": "https://www.camptocamp.org/routes/55120",
+    "crampon": {
+      "grade": "F",
+      "confirmed": true,
+      "season": "Fin mai – juin",
+      "note": "Pente max 40° sur 100 m (camptocamp). Choix possible entre névés tardifs ou rocher selon l'année."
+    }
   },
   {
+    "id": "pointe-d-aval-chauvet",
     "name": "Pointe d'Aval (Chauvet)",
     "altitude_m": 3320,
     "lat": 44.5449,
@@ -36,6 +51,7 @@
     "source_url": "https://www.altituderando.com/Pointe-d-Aval-ou-de-Chauvet-3320m"
   },
   {
+    "id": "grand-glaiza-punta-merciantaira",
     "name": "Grand Glaiza / Punta Merciantaira",
     "altitude_m": 3293,
     "lat": 44.8496,
@@ -48,6 +64,7 @@
     "source_url": "https://www.altituderando.com/Grand-Glaiza-3293m-ou-Punta-Merciantaira-par-la-bergerie-du-Lombard-ou-les"
   },
   {
+    "id": "le-grand-galibier",
     "name": "Le Grand Galibier",
     "altitude_m": 3228,
     "lat": 45.0639,
@@ -60,6 +77,7 @@
     "source_url": "https://www.altituderando.com/Le-Grand-Galibier-3228m-par-Plan-Lachat-et-le-col-de-la-Ponsonniere"
   },
   {
+    "id": "pain-de-sucre-chambeyron",
     "name": "Pain de Sucre (Chambeyron)",
     "altitude_m": 3208,
     "lat": 44.6904,
@@ -72,6 +90,7 @@
     "source_url": "https://www.altituderando.com/Le-Pain-de-Sucre-du-Queyras-3208m-par-l-arete-sud-ouest"
   },
   {
+    "id": "mont-thabor",
     "name": "Mont Thabor",
     "altitude_m": 3178,
     "lat": 45.1141,
@@ -84,6 +103,7 @@
     "source_url": "https://www.altituderando.com/Mont-Thabor-3178m-par-Valfrejus-et-le-Lavoir"
   },
   {
+    "id": "la-mortice-sommet-sud",
     "name": "La Mortice (sommet Sud)",
     "altitude_m": 3169,
     "lat": 44.5739,
@@ -96,6 +116,7 @@
     "source_url": "https://www.altituderando.com/La-Mortice-sommets-Sud-3169m-et-Nord-3186m-par-les-Couniets-Vars"
   },
   {
+    "id": "vieux-chaillol",
     "name": "Vieux Chaillol",
     "altitude_m": 3163,
     "lat": 44.7359,
@@ -108,6 +129,7 @@
     "source_url": "https://www.altituderando.com/Vieux-Chaillol-3163m-par-le-Col-de-la-Pisse-et-le-Col-de-Cote-Longue"
   },
   {
+    "id": "signal-du-petit-mont-cenis",
     "name": "Signal du Petit Mont Cenis",
     "altitude_m": 3162,
     "lat": 45.2443,
@@ -120,6 +142,7 @@
     "source_url": "https://www.altituderando.com/Signal-du-Petit-Mont-Cenis-3162m-voie-normale-de-l-arete-sud-ouest"
   },
   {
+    "id": "tete-de-la-frema",
     "name": "Tête de la Fréma",
     "altitude_m": 3151,
     "lat": 44.5373,
@@ -132,6 +155,7 @@
     "source_url": "https://www.altituderando.com/Tete-de-la-Frema-3151m-par-le-col-de-la-Gypiere-retour-par-le-pas-de-la"
   },
   {
+    "id": "tete-de-longet",
     "name": "Tête de Longet",
     "altitude_m": 3146,
     "lat": 44.6601,
@@ -144,6 +168,7 @@
     "source_url": "https://www.altituderando.com/Tete-de-Longet-3146m-et-Tete-de-la-Cula-3121m"
   },
   {
+    "id": "pic-de-la-farneireta",
     "name": "Pic de la Farnéiréta",
     "altitude_m": 3134,
     "lat": 44.6534,
@@ -156,6 +181,7 @@
     "source_url": "https://www.altituderando.com/Pic-de-la-Farneireta-3134m"
   },
   {
+    "id": "mont-chaberton",
     "name": "Mont Chaberton",
     "altitude_m": 3131,
     "lat": 44.9645,
@@ -168,6 +194,7 @@
     "source_url": "https://www.altituderando.com/Mont-Chaberton-3131m"
   },
   {
+    "id": "tete-de-la-cula",
     "name": "Tête de la Cula",
     "altitude_m": 3121,
     "lat": 44.6568,
@@ -180,6 +207,7 @@
     "source_url": "https://www.altituderando.com/Tete-de-Longet-3146m-et-Tete-de-la-Cula-3121m"
   },
   {
+    "id": "grand-queyras",
     "name": "Grand Queyras",
     "altitude_m": 3114,
     "lat": 44.715353,
@@ -192,6 +220,7 @@
     "source_url": "https://www.altituderando.com/Grand-Queyras-3114m"
   },
   {
+    "id": "pointe-des-cerces",
     "name": "Pointe des Cerces",
     "altitude_m": 3098,
     "lat": 45.0656,
@@ -201,9 +230,16 @@
     "difficulty": "T3",
     "notes": "Depuis les lacs du Grand Ban, Névache.",
     "source": "altituderando.com",
-    "source_url": "https://www.altituderando.com/Pointe-des-Cerces-3098m-par-le-lac-du-Grand-Ban-le-lac-Rond-et-le-lac-des"
+    "source_url": "https://www.altituderando.com/Pointe-des-Cerces-3098m-par-le-lac-du-Grand-Ban-le-lac-Rond-et-le-lac-des",
+    "crampon": {
+      "grade": "F (estimé)",
+      "confirmed": false,
+      "season": "Avant août / parfois après mi-septembre",
+      "note": "Hors de la fenêtre \"à sec\" (août à mi-sept.), \"petite course de neige\" — piolet/crampons facilitent sans être strictement obligatoires."
+    }
   },
   {
+    "id": "mont-buet",
     "name": "Mont Buet",
     "altitude_m": 3096,
     "lat": 46.0248,
@@ -216,6 +252,7 @@
     "source_url": "https://www.altituderando.com/Mont-Buet-3096m-par-Vallorcine-village-du-Buet"
   },
   {
+    "id": "pointe-des-fours",
     "name": "Pointe des Fours",
     "altitude_m": 3072,
     "lat": 45.3896,
@@ -228,6 +265,7 @@
     "source_url": "https://www.altituderando.com/Pointe-des-Fours-3072m-par-le-Pont-de-la-Neige"
   },
   {
+    "id": "pointe-joanne",
     "name": "Pointe Joanne",
     "altitude_m": 3052,
     "lat": 44.6802,
@@ -240,6 +278,7 @@
     "source_url": "https://www.altituderando.com/Pointe-Joanne-3052m-par-le-vallon-de-Soustre"
   },
   {
+    "id": "mont-pelat",
     "name": "Mont Pelat",
     "altitude_m": 3051,
     "lat": 44.265,
@@ -252,6 +291,7 @@
     "source_url": "https://www.altituderando.com/Mont-Pelat-3051m-en-boucle-par"
   },
   {
+    "id": "mont-clapier",
     "name": "Mont Clapier",
     "altitude_m": 3045,
     "lat": 44.11611,
@@ -264,6 +304,7 @@
     "source_url": "https://www.altituderando.com/Mont-Clapier-3045m"
   },
   {
+    "id": "pointe-d-escreins",
     "name": "Pointe d'Escreins",
     "altitude_m": 3038,
     "lat": 44.5947,
@@ -276,6 +317,7 @@
     "source_url": "https://www.altituderando.com/Pointe-d-Escreins-3038m-par-le-vallon-des-Houerts"
   },
   {
+    "id": "pointe-des-sagnes-longues",
     "name": "Pointe des Sagnes Longues",
     "altitude_m": 3032,
     "lat": 44.687489,
@@ -288,6 +330,7 @@
     "source_url": "https://www.altituderando.com/Pointe-des-Sagnes-Longues-3032m-par-le-vallon-de-Clausis"
   },
   {
+    "id": "mont-tenibre",
     "name": "Mont Ténibre",
     "altitude_m": 3031,
     "lat": 44.2837,
@@ -300,6 +343,7 @@
     "source_url": "https://www.altituderando.com/Mont-Tenibre-3031m-par-le-refuge-de-Rabuons"
   },
   {
+    "id": "pic-de-caramantran",
     "name": "Pic de Caramantran",
     "altitude_m": 3025,
     "lat": 44.6783,
@@ -312,6 +356,7 @@
     "source_url": "https://www.altituderando.com/Pic-de-Caramantran-3025m-par-le-col-Agnel"
   },
   {
+    "id": "pic-du-mas-de-la-grave",
     "name": "Pic du Mas de la Grave",
     "altitude_m": 3020,
     "lat": 45.1205,
@@ -324,6 +369,7 @@
     "source_url": "https://www.altituderando.com/Pic-du-Mas-de-la-Grave-3020m-par-le-Chazelet"
   },
   {
+    "id": "pointe-de-l-observatoire",
     "name": "Pointe de l'Observatoire",
     "altitude_m": 3015,
     "lat": 45.2909,
@@ -333,9 +379,16 @@
     "difficulty": "T3",
     "notes": "Sentier balcon au-dessus d'Aussois ; dernier tronçon depuis le Col d'Aussois nécessite les mains (rochers, recherche d'itinéraire), non technique mais plus qu'un simple sentier.",
     "source": "altituderando.com",
-    "source_url": "https://www.altituderando.com/Pointe-de-l-Observatoire-3015m-par-Aussois"
+    "source_url": "https://www.altituderando.com/Pointe-de-l-Observatoire-3015m-par-Aussois",
+    "crampon": {
+      "grade": "F (estimé)",
+      "confirmed": false,
+      "season": "Fin mai",
+      "note": "Névés dès 2325 m signalés fin mai ; \"aucune difficulté technique\" en l'absence de neige le reste de l'année."
+    }
   },
   {
+    "id": "pic-de-campbieil",
     "name": "Pic de Campbieil",
     "altitude_m": 3173,
     "lat": 42.792,
@@ -348,6 +401,7 @@
     "source_url": "https://www.altituderando.com/Pic-de-Campbieil-3173m"
   },
   {
+    "id": "grand-pic-de-tapou",
     "name": "Grand Pic de Tapou",
     "altitude_m": 3150,
     "lat": 42.7628,
@@ -357,9 +411,16 @@
     "difficulty": "T4",
     "notes": "Satellite du Vignemale côté Gavarnie.",
     "source": "altituderando.com",
-    "source_url": "https://www.le-bouquetin-boiteux.fr/2018/10/topo-pic-milieu-grand-pic-tapou-barrage-ossoue-aller-retour.html"
+    "source_url": "https://www.le-bouquetin-boiteux.fr/2018/10/topo-pic-milieu-grand-pic-tapou-barrage-ossoue-aller-retour.html",
+    "crampon": {
+      "grade": "F (estimé)",
+      "confirmed": false,
+      "season": "Jusqu'à mi-juillet",
+      "note": "Pentes finales larges et faciles en ascension directe. Ne pas confondre avec la traversée de crête vers le Pic du Milieu (AD-, écartée ci-dessous)."
+    }
   },
   {
+    "id": "le-taillon",
     "name": "Le Taillon",
     "altitude_m": 3144,
     "lat": 42.6936,
@@ -372,6 +433,7 @@
     "source_url": "https://www.altituderando.com/Le-Pic-du-Taillon-3144m"
   },
   {
+    "id": "pica-d-estats",
     "name": "Pica d'Estats",
     "altitude_m": 3143,
     "lat": 42.667,
@@ -384,6 +446,7 @@
     "source_url": "https://www.altituderando.com/Pic-du-Montcalm-3077m-Pique-d-Estats-3143m-Pic-Verdaguer-3131m"
   },
   {
+    "id": "pic-du-milieu",
     "name": "Pic du Milieu",
     "altitude_m": 3130,
     "lat": 42.7616,
@@ -396,6 +459,7 @@
     "source_url": "https://www.le-bouquetin-boiteux.fr/2018/10/topo-pic-milieu-grand-pic-tapou-barrage-ossoue-aller-retour.html"
   },
   {
+    "id": "pic-de-neouvielle",
     "name": "Pic de Néouvielle",
     "altitude_m": 3091,
     "lat": 42.8354,
@@ -405,9 +469,16 @@
     "difficulty": "T3",
     "notes": "Réserve naturelle du Néouvielle ; petite cheminée à l'arrivée nécessitant les mains. Attention : crampons et piolet souvent indispensables une bonne partie de la saison (névés/glace persistants) — se renseigner sur les conditions avant de partir, pas seulement 'en début de saison'.",
     "source": "altituderando.com",
-    "source_url": "https://www.topopyrenees.com/randonnee-pic-neouvielle-3091m/"
+    "source_url": "https://www.topopyrenees.com/randonnee-pic-neouvielle-3091m/",
+    "crampon": {
+      "grade": "F",
+      "confirmed": true,
+      "season": "Juin – juillet",
+      "note": "Névé consolidé jusqu'à juillet, progression facile aux crampons ; grade F confirmé pour la section finale (topo)."
+    }
   },
   {
+    "id": "grand-astazou",
     "name": "Grand Astazou",
     "altitude_m": 3071,
     "lat": 42.7025,
@@ -420,6 +491,7 @@
     "source_url": "https://www.topopyrenees.com/les-astazous-3071m-en-boucle-par-tuquerouye/"
   },
   {
+    "id": "pic-maubic",
     "name": "Pic Maubic",
     "altitude_m": 3058,
     "lat": 42.8027,
@@ -432,6 +504,7 @@
     "source_url": "https://www.altituderando.com/Pic-Maubic-3058m"
   },
   {
+    "id": "turon-de-neouvielle",
     "name": "Turon de Néouvielle",
     "altitude_m": 3035,
     "lat": 42.8278,
@@ -444,6 +517,7 @@
     "source_url": "https://www.topopyrenees.com/randonnee-turon-de-neouvielle-3035m/"
   },
   {
+    "id": "pic-d-estaragne",
     "name": "Pic d'Estaragne",
     "altitude_m": 3006,
     "lat": 42.7972,
@@ -456,6 +530,7 @@
     "source_url": "https://www.altituderando.com/Lac-de-Cap-de-Long-pic-de-Campbieil-3173m-et-pic-d-Estaragne-3006m-en-boucle"
   },
   {
+    "id": "la-grande-fache",
     "name": "La Grande Fache",
     "altitude_m": 3005,
     "lat": 42.8082,
@@ -468,6 +543,7 @@
     "source_url": "https://www.topopyrenees.com/randonnee-la-grande-fache-3005m/"
   },
   {
+    "id": "la-mortice-sommet-nord",
     "name": "La Mortice (sommet Nord)",
     "altitude_m": 3186,
     "lat": 44.5822295,
@@ -480,6 +556,7 @@
     "source_url": "https://www.altituderando.com/La-Mortice-sommets-Sud-3169m-et-Nord-3186m-par-les-Couniets-Vars"
   },
   {
+    "id": "pic-du-montcalm",
     "name": "Pic du Montcalm",
     "altitude_m": 3077,
     "lat": 42.671885,
@@ -492,6 +569,7 @@
     "source_url": "https://www.altituderando.com/Pic-du-Montcalm-3077m-Pique-d-Estats-3143m-Pic-Verdaguer-3131m"
   },
   {
+    "id": "petit-vignemale",
     "name": "Petit Vignemale",
     "altitude_m": 3032,
     "lat": 42.7747,
@@ -501,9 +579,16 @@
     "difficulty": "T4",
     "notes": "Depuis le barrage d'Ossoue via le refuge de Bayssellance et le col de la Hourquette d'Ossoue — voie distincte du Grand Vignemale/Pique Longue, qui lui nécessite le glacier d'Ossoue. Aucune difficulté par beau temps sans neige ; crampons/piolet utiles si névés persistants sur la crête finale (variable selon saison).",
     "source": "altituderando.com, topopyrenees.com",
-    "source_url": "https://www.topopyrenees.com/randonnee-petit-vignemale-3032m/"
+    "source_url": "https://www.topopyrenees.com/randonnee-petit-vignemale-3032m/",
+    "crampon": {
+      "grade": "F à PD- (estimé)",
+      "confirmed": false,
+      "season": "Fin d'été / tout début automne uniquement",
+      "note": "⚠️ Printemps (avril-mai) explicitement déconseillé par les topos : risque d'avalanche important, pas une simple question de crampons."
+    }
   },
   {
+    "id": "pic-de-batoua",
     "name": "Pic de Batoua",
     "altitude_m": 3034,
     "lat": 42.7087,
@@ -516,6 +601,7 @@
     "source_url": "https://www.topopyrenees.com/les-3-pics-de-batoua-3034m-depuis-le-refuge-de-lhospice-de-rioumajou/"
   },
   {
+    "id": "pic-du-marbore",
     "name": "Pic du Marboré",
     "altitude_m": 3248,
     "lat": 42.6928,
@@ -528,6 +614,7 @@
     "source_url": "https://www.topopyrenees.com/randonnee-pic-du-marbore-3248m/"
   },
   {
+    "id": "rateau-d-aussois",
     "name": "Râteau d'Aussois",
     "altitude_m": 3131,
     "lat": 45.2463525,

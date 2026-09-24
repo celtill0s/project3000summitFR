@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sommets &gt; 3000 m accessibles en randonnée</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+<link rel="stylesheet" href="vendor/leaflet.markercluster/MarkerCluster.css" />
+<link rel="stylesheet" href="vendor/leaflet.markercluster/MarkerCluster.Default.css" />
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -62,7 +62,8 @@
 <!-- Vue "crampons + piolet" (POC local) : ouverte via le bouton dédié dans l'en-tête de la
      barre latérale. Liste les sommets faisables en crampons+piolet à pied (pas de cascade de
      glace, pas de corde) hors de leur fenêtre "randonnée normale", avec le grade alpin quand
-     il a pu être confirmé sur camptocamp.org — voir research/seasons.md pour le détail. -->
+     il a pu être confirmé sur camptocamp.org. Données : champ "crampon" des sommets concernés
+     dans static/mountains.json. -->
 <div id="crampon-view" hidden>
   <div id="crampon-view-header">
     <h2>Sommets accessibles crampons + piolet (hors saison normale)</h2>
@@ -85,8 +86,8 @@
   </div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="vendor/leaflet.markercluster/leaflet.markercluster.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

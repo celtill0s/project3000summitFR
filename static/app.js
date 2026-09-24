@@ -13,7 +13,8 @@ function escapeHtml(str) {
 // directement vers le serveur, qui la persiste sur son propre disque (data/). Plus de
 // localStorage, plus d'IndexedDB, plus de File System Access API — le serveur EST la
 // persistance, quel que soit l'appareil/navigateur utilisé pour consulter le site.
-const peakApiBase = name => `/api/peaks/${encodeURIComponent(name)}`;
+// Routes par id de sommet (stable), jamais par nom : renommer un sommet ne casse rien.
+const peakApiBase = p => `/api/peaks/${encodeURIComponent(p.id)}`;
 
 async function apiPost(url, body) {
   const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -27,16 +28,40 @@ async function apiDelete(url) {
   return res.json().catch(() => ({}));
 }
 
+// Envoi du fichier brut (pas de multipart) : le serveur l'écrit sur disque au fil de l'eau,
+// sans jamais le charger entièrement en mémoire. Le nom d'origine ne sert qu'à l'extension.
 async function apiUpload(url, file) {
-  const fd = new FormData();
-  fd.append('file', file);
-  const res = await fetch(url, { method: 'POST', body: fd });
+  const sep = url.includes('?') ? '&' : '?';
+  const res = await fetch(`${url}${sep}filename=${encodeURIComponent(file.name)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    body: file
+  });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || ('HTTP ' + res.status));
   return res.json();
 }
 
 function isVideoFile(filename) {
   return /\.(mp4|webm|mov|m4v|ogv|avi|mkv)$/i.test(filename || '');
+}
+
+// HEIC/HEIF (photos iPhone) : affichable nativement par Safari uniquement.
+function isHeicFile(filename) {
+  return /\.(heic|heif)$/i.test(filename || '');
+}
+
+// URLs d'un média : original, miniature (grille) et version affichable dans la visionneuse
+// (JPEG converti par le serveur pour le HEIC, l'original sinon). Sans Pillow côté serveur,
+// /thumbs/ renvoie simplement l'original.
+function mediaUrls(p, filename) {
+  const id = encodeURIComponent(p.id);
+  const file = encodeURIComponent(filename);
+  const original = `/photos/${id}/${file}`;
+  if (isVideoFile(filename)) return { thumb: original, full: original };
+  return {
+    thumb: `/thumbs/${id}/480/${file}`,
+    full: isHeicFile(filename) ? `/thumbs/${id}/1920/${file}` : original
+  };
 }
 
 // items: [{src, isVideo}, ...] — toute la série de médias du sommet, pour pouvoir défiler
@@ -91,63 +116,25 @@ function initLightbox() {
   });
 }
 
-// --- Vue cachée "crampons + piolet" (POC local) : liste manuellement vérifiée, distincte du
-// champ "season" du catalogue (qui décrit la fenêtre de RANDONNÉE normale, sans matériel).
-// Ici : sommets où une extension crampons+piolet à pied (pas de corde, pas de glace verticale)
-// est documentée, avec le grade alpin (confirmé sur camptocamp.org, ou estimé sinon).
-// Voir research/seasons.md pour le détail des sources par sommet.
-const CRAMPON_PIOLET_PEAKS = [
-  {
-    name: 'Pic de Néouvielle', altitude: 3091, region: 'Pyrénées/Néouvielle',
-    grade: 'F', confirmed: true, season: 'Juin – juillet',
-    note: 'Névé consolidé jusqu\'à juillet, progression facile aux crampons ; grade F confirmé pour la section finale (topo).'
-  },
-  {
-    name: 'Aiguille de la Grande Sassière', altitude: 3747, region: 'Alpes/Vanoise-Tarentaise',
-    grade: 'F à PD', confirmed: true, season: 'Fin octobre – novembre',
-    note: 'Selon conditions ; forum camptocamp : crampons+piolet obligatoires en fin de saison, pentes gelées même sans neige fraîche.'
-  },
-  {
-    name: 'Ouille Noire', altitude: 3357, region: 'Alpes/Vanoise',
-    grade: 'F', confirmed: true, season: 'Fin mai – juin',
-    note: 'Pente max 40° sur 100 m (camptocamp). Choix possible entre névés tardifs ou rocher selon l\'année.'
-  },
-  {
-    name: 'Pointe des Cerces', altitude: 3098, region: 'Alpes/Vanoise-Briançonnais',
-    grade: 'F (estimé)', confirmed: false, season: 'Avant août / parfois après mi-septembre',
-    note: 'Hors de la fenêtre "à sec" (août à mi-sept.), "petite course de neige" — piolet/crampons facilitent sans être strictement obligatoires.'
-  },
-  {
-    name: 'Grand Pic de Tapou', altitude: 3150, region: 'Pyrénées/Vignemale',
-    grade: 'F (estimé)', confirmed: false, season: "Jusqu'à mi-juillet",
-    note: 'Pentes finales larges et faciles en ascension directe. Ne pas confondre avec la traversée de crête vers le Pic du Milieu (AD-, écartée ci-dessous).'
-  },
-  {
-    name: "Pointe de l'Observatoire", altitude: 3015, region: 'Alpes/Vanoise',
-    grade: 'F (estimé)', confirmed: false, season: 'Fin mai',
-    note: 'Névés dès 2325 m signalés fin mai ; "aucune difficulté technique" en l\'absence de neige le reste de l\'année.'
-  },
-  {
-    name: 'Petit Vignemale', altitude: 3032, region: 'Pyrénées/Vignemale',
-    grade: 'F à PD- (estimé)', confirmed: false, season: 'Fin d\'été / tout début automne uniquement',
-    note: '⚠️ Printemps (avril-mai) explicitement déconseillé par les topos : risque d\'avalanche important, pas une simple question de crampons.'
-  }
-];
-
+// --- Vue "crampons + piolet" (POC) : sommets où une extension crampons+piolet à pied (pas de
+// corde, pas de glace verticale) est documentée hors de la fenêtre de randonnée normale, avec
+// le grade alpin (confirmé sur camptocamp.org, ou estimé sinon). Données : champ "crampon" des
+// sommets concernés dans static/mountains.json (validé par tests/test_catalog.py).
 function cramponRowHtml(p) {
-  const gradeClass = p.confirmed ? 'confirmed' : 'estimated';
+  const c = p.crampon;
+  const gradeClass = c.confirmed ? 'confirmed' : 'estimated';
   return `<div class="crampon-row">
-    <div class="name">${escapeHtml(p.name)}<div class="note" style="margin-top:2px;">${p.altitude} m · ${escapeHtml(p.region)}</div></div>
-    <div class="grade ${gradeClass}">${escapeHtml(p.grade)}</div>
-    <div>${escapeHtml(p.season)}</div>
-    <div class="note">${escapeHtml(p.note)}</div>
+    <div class="name">${escapeHtml(p.name)}<div class="note" style="margin-top:2px;">${escapeHtml(p.altitude_m)} m · ${escapeHtml(p.region)} / ${escapeHtml(p.massif)}</div></div>
+    <div class="grade ${gradeClass}">${escapeHtml(c.grade)}</div>
+    <div>${escapeHtml(c.season)}</div>
+    <div class="note">${escapeHtml(c.note)}</div>
   </div>`;
 }
 
 function renderCramponView() {
   const el = document.getElementById('crampon-table');
   const head = `<div class="crampon-row head"><div>Sommet</div><div>Grade</div><div>Saison</div><div>Note</div></div>`;
-  el.innerHTML = head + CRAMPON_PIOLET_PEAKS.map(cramponRowHtml).join('');
+  el.innerHTML = head + PEAKS.filter(p => p.crampon).map(cramponRowHtml).join('');
 }
 
 function openCramponView() {
@@ -201,34 +188,33 @@ function applyResponsiveControlPositions() {
   map.zoomControl.setPosition(mobile ? 'bottomleft' : 'topleft');
 }
 
-function mediaThumbHtml(key, src, isVideo, alt, deleteBtnHtml) {
+function mediaThumbHtml(key, urls, isVideo, alt, deleteBtnHtml) {
   const mediaTag = isVideo
-    ? `<video src="${src}" muted playsinline preload="metadata"></video><span class="photos-play">&#9658;</span>`
-    : `<img src="${src}" loading="lazy" alt="${escapeHtml(alt)}" />`;
-  return `<div class="photos-thumb" data-id="${escapeHtml(key)}" data-video="${isVideo ? '1' : '0'}">${mediaTag}${deleteBtnHtml || ''}</div>`;
+    ? `<video src="${urls.thumb}" muted playsinline preload="metadata"></video><span class="photos-play">&#9658;</span>`
+    : `<img src="${urls.thumb}" loading="lazy" alt="${escapeHtml(alt)}" />`;
+  return `<div class="photos-thumb" data-id="${escapeHtml(key)}" data-full="${urls.full}" data-video="${isVideo ? '1' : '0'}">${mediaTag}${deleteBtnHtml || ''}</div>`;
 }
 
-// Toutes les photos/vidéos viennent désormais du serveur (URLs réelles, /photos/<slug>/<fichier>) :
+function lightboxItems(thumbs) {
+  return thumbs.map(t => ({ src: t.dataset.full, isVideo: t.dataset.video === '1' }));
+}
+
+// Toutes les photos/vidéos viennent désormais du serveur (URLs réelles, /photos/<id>/<fichier>) :
 // plus de distinction "importé en local (Blob)" vs "fourni par le dépôt", une seule source de vérité.
 function renderPhotosGrid(p, grid, highlightKeys) {
   highlightKeys = highlightKeys || [];
   let html = '';
   (p.photos || []).forEach(filename => {
     const key = `repo:${filename}`;
-    const src = `/photos/${slugify(p.name)}/${encodeURIComponent(filename)}`;
     const delBtn = `<button type="button" class="photo-del" data-filename="${escapeHtml(filename)}" title="Supprimer">&#10005;</button>`;
-    html += mediaThumbHtml(key, src, isVideoFile(filename), p.name, delBtn);
+    html += mediaThumbHtml(key, mediaUrls(p, filename), isVideoFile(filename), p.name, delBtn);
   });
   grid.innerHTML = html || '<div class="gpx-status">Aucune photo ou vidéo pour l\'instant.</div>';
   const thumbs = [...grid.querySelectorAll('.photos-thumb')];
   thumbs.forEach((thumb, idx) => {
     thumb.addEventListener('click', (e) => {
       if (e.target.closest('.photo-del')) return;
-      const items = thumbs.map(t => ({
-        src: t.querySelector('img,video').getAttribute('src'),
-        isVideo: t.dataset.video === '1'
-      }));
-      openLightbox(items, idx, p.name);
+      openLightbox(lightboxItems(thumbs), idx, p.name);
     });
   });
   grid.querySelectorAll('.photo-del').forEach(btn => {
@@ -237,7 +223,7 @@ function renderPhotosGrid(p, grid, highlightKeys) {
       const statusEl = grid.parentElement.querySelector('.photos-status');
       const filename = btn.dataset.filename;
       try {
-        await apiDelete(`${peakApiBase(p.name)}/photos/${encodeURIComponent(filename)}`);
+        await apiDelete(`${peakApiBase(p)}/photos/${encodeURIComponent(filename)}`);
         p.photos = (p.photos || []).filter(f => f !== filename);
         if (statusEl) statusEl.textContent = 'Supprimée du serveur.';
       } catch (err) {
@@ -256,7 +242,7 @@ function renderPhotosGrid(p, grid, highlightKeys) {
 }
 
 function photosRowHtml(p) {
-  return `<div class="photos-row" data-name="${name}">
+  return `<div class="photos-row" data-id="${escapeHtml(p.id)}">
     <div class="photos-label">📷 Photos &amp; vidéos</div>
     <div class="photos-grid"></div>
     <button type="button" class="gpx-btn photos-add">➕ Ajouter des photos/vidéos</button>
@@ -281,7 +267,7 @@ function bindPhotosRow(root, p) {
       const isVideo = (file.type || '').startsWith('video/');
       statusEl.textContent = `Envoi de ${isVideo ? 'la vidéo' : 'la photo'} en cours…`;
       try {
-        const result = await apiUpload(`${peakApiBase(p.name)}/photos`, file);
+        const result = await apiUpload(`${peakApiBase(p)}/photos`, file);
         if (!Array.isArray(p.photos)) p.photos = [];
         p.photos.push(result.filename);
         addedFilenames.push(result.filename);
@@ -299,11 +285,7 @@ function bindPhotosRow(root, p) {
       const lastKey = highlightKeys[highlightKeys.length - 1];
       const idx = thumbs.findIndex(t => t.dataset.id === lastKey);
       if (idx !== -1) {
-        const items = thumbs.map(t => ({
-          src: t.querySelector('img,video').getAttribute('src'),
-          isVideo: t.dataset.video === '1'
-        }));
-        openLightbox(items, idx, p.name);
+        openLightbox(lightboxItems(thumbs), idx, p.name);
       }
     }
   });
@@ -425,7 +407,7 @@ const layersControl = L.control.layers(null, {
 
 const markers = new Map(); // name -> {marker, data}
 
-// --- GPX : uploadée vers le serveur, servie ensuite depuis /gpx/<slug>.gpx (une seule source de
+// --- GPX : uploadée vers le serveur, servie ensuite depuis /gpx/<id>.gpx (une seule source de
 // vérité, plus de distinction "importé en local" vs "fourni par le dépôt"). ---
 const gpxPolylines = new Map(); // name -> [L.Polyline, ...]
 
@@ -565,12 +547,6 @@ function drawGpxForPeak(p, gpxText) {
   return lines;
 }
 
-function slugify(name) {
-  return name.toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '') // enlève les accents
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-}
-
 function downloadGpx(p) {
   const text = gpxRawText.get(p.name);
   if (!text) return;
@@ -578,7 +554,7 @@ function downloadGpx(p) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${slugify(p.name)}.gpx`;
+  a.download = `${p.id}.gpx`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -593,10 +569,12 @@ function importGpxFile(p, file, statusEl) {
       const bounds = L.latLngBounds(lines.flatMap(l => l.getLatLngs()));
       map.fitBounds(bounds, { padding: [40, 40] });
       if (statusEl) statusEl.textContent = 'Envoi de la trace au serveur…';
-      await apiUpload(`${peakApiBase(p.name)}/gpx`, file);
-      p.gpx = `/gpx/${slugify(p.name)}.gpx`;
-      if (statusEl) statusEl.textContent = 'Trace enregistrée sur le serveur.';
+      await apiUpload(`${peakApiBase(p)}/gpx`, file);
+      p.gpx = `/gpx/${encodeURIComponent(p.id)}.gpx`;
       refreshGpxRow(p);
+      // La ligne GPX vient d'être régénérée : le message va dans son nouvel élément de statut.
+      const newStatusEl = document.querySelector('#peak-panel-body .gpx-import-status');
+      if (newStatusEl) newStatusEl.textContent = 'Trace enregistrée sur le serveur.';
     } catch (err) {
       if (statusEl) statusEl.textContent = 'Erreur : ' + err.message;
     }
@@ -608,9 +586,11 @@ function importGpxFile(p, file, statusEl) {
 async function deleteGpxTrack(p) {
   const row = document.querySelector('.gpx-row .gpx-import-status');
   try {
-    await apiDelete(`${peakApiBase(p.name)}/gpx`);
+    await apiDelete(`${peakApiBase(p)}/gpx`);
   } catch (err) {
+    // La trace est toujours sur le serveur : on la laisse affichée.
     if (row) row.textContent = `Échec de la suppression (${err.message}).`;
+    return;
   }
   p.gpx = null;
   clearGpxForPeak(p.name);
@@ -639,7 +619,7 @@ function gpxRowHtml(p) {
   }
   body += `<input type="file" class="gpx-file-input" accept=".gpx,application/gpx+xml,application/xml,text/xml" hidden />`;
   body += `<div class="gpx-status gpx-import-status"></div>`;
-  return `<div class="gpx-row" data-name="${name}">${body}</div>`;
+  return `<div class="gpx-row" data-id="${escapeHtml(p.id)}">${body}</div>`;
 }
 
 function gpxDetailHtml(p) {
@@ -811,14 +791,15 @@ function popupHtml(p) {
   `;
 }
 
-function toggleDone(name) {
+function toggleDone(p) {
+  const name = p.name;
   const wasDone = doneSet.has(name);
   if (wasDone) doneSet.delete(name); else doneSet.add(name);
   const entry = markers.get(name);
   if (entry) entry.marker.setIcon(makeIcon(DIFF_COLORS[entry.data.difficulty] || '#555', doneSet.has(name), entry.data.altitude_m));
   renderList();
   updateDoneCount();
-  apiPost(`${peakApiBase(name)}/done`, { done: !wasDone }).catch(() => {
+  apiPost(`${peakApiBase(p)}/done`, { done: !wasDone }).catch(() => {
     // échec réseau : on annule l'affichage optimiste
     if (wasDone) doneSet.add(name); else doneSet.delete(name);
     if (entry) entry.marker.setIcon(makeIcon(DIFF_COLORS[entry.data.difficulty] || '#555', doneSet.has(name), entry.data.altitude_m));
@@ -833,7 +814,7 @@ let activePeakName = null;
 
 function bindPanelContent(root, p) {
   const doneEl = root.querySelector('.pop-done-checkbox');
-  if (doneEl) doneEl.addEventListener('change', () => toggleDone(p.name));
+  if (doneEl) doneEl.addEventListener('change', () => toggleDone(p));
   const toggleBtn = root.querySelector('.cotation-detail-toggle');
   const toggleBody = root.querySelector('.cotation-detail-body');
   if (toggleBtn && toggleBody) {
@@ -862,7 +843,7 @@ function bindPanelContent(root, p) {
       saveTimer = setTimeout(() => {
         const text = commentEl.value.trim();
         p.comment = text;
-        apiPost(`${peakApiBase(p.name)}/comment`, { comment: text })
+        apiPost(`${peakApiBase(p)}/comment`, { comment: text })
           .then(() => { if (commentStatusEl) commentStatusEl.textContent = 'Enregistré sur le serveur.'; })
           .catch((err) => { if (commentStatusEl) commentStatusEl.textContent = `Échec de l'enregistrement (${err.message}).`; });
       }, 500);
@@ -874,7 +855,7 @@ function bindPanelContent(root, p) {
       clearTimeout(saveTimer);
       const text = commentEl.value.trim();
       p.comment = text;
-      apiPost(`${peakApiBase(p.name)}/comment`, { comment: text })
+      apiPost(`${peakApiBase(p)}/comment`, { comment: text })
         .then(() => { if (commentStatusEl) commentStatusEl.textContent = 'Enregistré sur le serveur.'; })
         .catch((err) => { if (commentStatusEl) commentStatusEl.textContent = `Échec de l'enregistrement (${err.message}).`; });
     });
@@ -1093,7 +1074,7 @@ function renderList() {
     `;
     item.querySelector('.done-check').addEventListener('click', (e) => {
       e.stopPropagation();
-      toggleDone(p.name);
+      toggleDone(p);
     });
     item.addEventListener('click', () => {
       const m = markers.get(p.name);

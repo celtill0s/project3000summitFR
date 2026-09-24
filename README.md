@@ -18,7 +18,7 @@ Le projet est composé de deux parties :
   altitude, coordonnées, cotation, notes, source — versionné dans ce
   dépôt, partagé avec tout le monde).
 - **`server/app.py`** — un petit backend Python (bibliothèque standard
-  uniquement, aucune dépendance à installer) qui sert le frontend et
+  uniquement ; Pillow en option pour les miniatures, voir plus bas) qui sert le frontend et
   fusionne le catalogue public avec les **données personnelles**
   (sommets faits, commentaires, photos/vidéos, traces GPX), stockées dans
   `data/` — **jamais dans ce dépôt** (voir `.gitignore`). Toute écriture
@@ -111,6 +111,13 @@ cd project3000summitFR
    version actuelle. Ne touche jamais à `data/` ni `secrets/`, qui restent
    hors git).
 
+   Au démarrage, le serveur convertit automatiquement un ancien
+   `data/progress.json` (indexé par nom de sommet) au format indexé par
+   `id`. Une entrée qui ne correspond à aucun sommet (renommé avant
+   l'arrivée des ids) est conservée et signalée dans les logs
+   (`docker compose logs app`) : il suffit alors de renommer sa clé dans
+   `progress.json` avec l'`id` du sommet.
+
 ### Sauvegarde
 
 Tout ce qui compte pour ton instance (progression, commentaires,
@@ -143,12 +150,13 @@ d'une suppression accidentelle, pas d'une panne matérielle. Copie
   coordonnées, massif, région, cotation de difficulté (échelle CAS/SAC),
   notes d'accès, source.
 - **`server/app.py`** — le backend (voir "Architecture" ci-dessus).
+- **`static/vendor/`** — Leaflet 1.9.4 et Leaflet.markercluster 1.5.3,
+  copiés tels quels (avec leur licence) : aucun script chargé depuis un
+  CDN tiers.
 - **`data/`** (généré à l'exécution, jamais commité) — `progress.json`
-  (sommets faits/commentaires/références photos-vidéos-gpx par sommet),
-  `photos/<sommet>/`, `gpx/<sommet>.gpx`.
-- **`gpx/`** — dossier historique, conservé pour référence
-  (voir `gpx/README.md`) ; les traces gérées depuis l'appli vivent
-  désormais dans `data/gpx/`.
+  (sommets faits/commentaires/références photos-vidéos-gpx, indexés par
+  `id` de sommet), `photos/<id>/`, `gpx/<id>.gpx`, `thumbs/` (miniatures,
+  régénérables : inutile de les sauvegarder).
 - **`sources.md`** — méthodologie complète : comment chaque sommet a été
   sélectionné, comment sa cotation a été déterminée, sources utilisées et
   limites connues (inclut l'audit critique du 2026-09-01).
@@ -166,6 +174,18 @@ d'une suppression accidentelle, pas d'une panne matérielle. Copie
   **trace GPX par sommet** (import, profil altimétrique, dénivelé,
   export) : tout est enregistré immédiatement côté serveur, visible
   depuis n'importe quel appareil qui se connecte à la même instance.
+- **Vidéos** servies avec support des requêtes `Range` (avance rapide,
+  lecture sur iPhone/Safari) ; les uploads sont écrits sur disque au fil
+  de l'eau, jamais chargés entièrement en mémoire (confortable sur un
+  Raspberry Pi, même pour une vidéo de 500 Mo).
+- **Miniatures et HEIC** : si [Pillow](https://python-pillow.org/) (et
+  `pillow-heif`) est installé — c'est le cas dans l'image Docker —, la
+  grille affiche des miniatures JPEG générées à la demande, et les photos
+  HEIC d'iPhone sont converties en JPEG pour être visibles dans tous les
+  navigateurs. Sans Pillow, les originaux sont servis tels quels.
+  En local : `pip install -r requirements.txt`.
+- **Vue crampons/piolet** : sommets faisables hors saison avec crampons
+  et piolet (champ `crampon` du catalogue).
 
 ## Modifier le catalogue
 
@@ -174,6 +194,7 @@ sommet). Chaque entrée suit ce schéma :
 
 ```json
 {
+  "id": "nom-du-sommet",
   "name": "Nom du sommet",
   "altitude_m": 3025,
   "lat": 44.6783,
@@ -183,9 +204,24 @@ sommet). Chaque entrée suit ce schéma :
   "difficulty": "T2" | "T3" | "T4",
   "notes": "Description courte de l'itinéraire/accès",
   "source": "domaine-source.fr",
-  "source_url": "https://... (page précise, affichée en lien cliquable dans le \"Détail de la cotation\")"
+  "source_url": "https://... (page précise, affichée en lien cliquable dans le \"Détail de la cotation\")",
+  "crampon": {
+    "grade": "F",
+    "confirmed": true,
+    "season": "Juin – juillet",
+    "note": "Optionnel : extension crampons+piolet hors saison (vue dédiée)"
+  }
 }
 ```
+
+⚠️ **L'`id` ne doit jamais changer** une fois le sommet publié : c'est la
+clé des données personnelles (`data/progress.json`, dossiers photos et
+GPX). Pour corriger un nom, modifier `name` seulement. Pour un nouveau
+sommet, prendre le nom en minuscules, sans accents, mots séparés par des
+tirets.
+
+`pytest` valide automatiquement le catalogue (champs, cotations,
+coordonnées, unicité des ids) — lancé aussi par la CI à chaque push.
 
 (Les champs `done`, `comment`, `photos`, `gpx` ne font **pas** partie du
 catalogue : ce sont des données personnelles, gérées par le serveur dans

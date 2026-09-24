@@ -1,10 +1,15 @@
 FROM python:3.13-slim
 WORKDIR /app
+# Pillow + pillow-heif (miniatures, HEIC -> JPEG) : roues précompilées dispo en amd64 et arm64
+# (Raspberry Pi 64 bits), rien à compiler.
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 COPY static/ ./static/
 COPY server/ ./server/
 ENV PORT=8000 \
     DATA_DIR=/data \
-    STATIC_DIR=/app/static
+    STATIC_DIR=/app/static \
+    PYTHONUNBUFFERED=1
 # Tourne en utilisateur non-root (uid/gid 1000, aligné sur l'utilisateur hôte qui possède le
 # bind-mount ./data) : un éventuel bug d'écriture/traversal reste confiné à cet utilisateur,
 # pas root dans le conteneur.
