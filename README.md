@@ -54,20 +54,31 @@ cd project3000summitFR
 ```
 
 1. **Créer les identifiants Basic Auth** (protège tout le site — sans ça,
-   n'importe qui atteignant le port pourrait cocher/commenter/uploader) :
+   n'importe qui atteignant le port pourrait cocher/commenter/uploader).
+   Deux comptes sont prévus :
+
+   - **ton compte** (lecture + écriture), identifiant au choix ;
+   - **`operator`**, en **lecture seule** : Caddy refuse toute requête
+     `POST`/`DELETE` faite sous cette identité (voir `Caddyfile`). Pratique
+     pour montrer la carte à quelqu'un sans lui donner la main sur tes
+     données.
 
    ```bash
    mkdir -p secrets
+   # hash de ton mot de passe
    docker run --rm caddy:2-alpine caddy hash-password --plaintext 'TON_MOT_DE_PASSE'
    echo -n 'TON_IDENTIFIANT' > secrets/basic_auth_user
    echo -n 'LE_HASH_AFFICHÉ_CI-DESSUS' > secrets/basic_auth_hash
-   chmod 600 secrets/basic_auth_user secrets/basic_auth_hash
+   # hash du mot de passe du compte "operator" (lecture seule)
+   docker run --rm caddy:2-alpine caddy hash-password --plaintext 'MOT_DE_PASSE_OPERATOR'
+   echo -n 'LE_HASH_AFFICHÉ_CI-DESSUS' > secrets/operator_hash
+   chmod 600 secrets/*
    ```
 
-   (voir `secrets/README.md` pour le détail). Ces fichiers ne sont
-   jamais commités et ne transitent jamais par une variable
-   d'environnement `.env` : Docker les monte comme *secrets*, invisibles
-   via `docker inspect`.
+   Les trois fichiers sont obligatoires (`docker compose up` échoue si
+   l'un d'eux manque). Ils ne sont jamais commités et ne transitent
+   jamais par une variable d'environnement `.env` : Docker les monte
+   comme *secrets*, invisibles via `docker inspect`.
 
 2. **Lancer** :
 
@@ -89,14 +100,31 @@ cd project3000summitFR
    ./update.sh
    ```
 
-   (`docker compose down`, `git pull`, `docker compose up -d --build` —
-   ne touche jamais à `data/` ni `secrets/`, qui restent hors git).
+   (`git pull --ff-only` puis `docker compose up -d --build`, sans arrêt
+   préalable : si le pull échoue, l'appli continue de tourner avec la
+   version actuelle. Ne touche jamais à `data/` ni `secrets/`, qui restent
+   hors git).
 
 ### Sauvegarde
 
 Tout ce qui compte pour ton instance (progression, commentaires,
 photos/vidéos, traces GPX) vit dans `data/` — un simple dossier à
 sauvegarder comme n'importe quel autre (copie, rsync, snapshot…).
+
+Le script `scripts/backup.sh` crée des snapshots datés de `data/` avec
+`rsync --link-dest` (les fichiers inchangés sont des liens durs : chaque
+snapshot est complet sans dupliquer l'espace disque), et purge ceux de
+plus de 30 jours. Variables : `BACKUP_ROOT` (défaut
+`~/backups-project3000summitFR`), `RETENTION_DAYS`, `DATA_DIR`.
+Exemple de crontab (tous les jours à 3 h) :
+
+```cron
+0 3 * * * /chemin/vers/project3000summitFR/scripts/backup.sh >> ~/backup-summit.log 2>&1
+```
+
+⚠️ Les snapshots restent sur le même disque que l'appli : ils protègent
+d'une suppression accidentelle, pas d'une panne matérielle. Copie
+`BACKUP_ROOT` ailleurs pour ça.
 
 ## Contenu
 

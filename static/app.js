@@ -256,7 +256,7 @@ function renderPhotosGrid(p, grid, highlightKeys) {
 }
 
 function photosRowHtml(p) {
-  return `<div class="photos-row" data-name="${p.name.replace(/"/g, '&quot;')}">
+  return `<div class="photos-row" data-name="${name}">
     <div class="photos-label">📷 Photos &amp; vidéos</div>
     <div class="photos-grid"></div>
     <button type="button" class="gpx-btn photos-add">➕ Ajouter des photos/vidéos</button>
@@ -555,7 +555,7 @@ function drawGpxForPeak(p, gpxText) {
   clearGpxForPeak(p.name);
   const lines = segments.map(seg => L.polyline(seg.map(pt => [pt.lat, pt.lon]), { color: '#1f5f8b', weight: 3, opacity: 0.85 }));
   lines.forEach(line => {
-    line.bindTooltip(p.name, { sticky: true });
+    line.bindTooltip(escapeHtml(p.name), { sticky: true });
     gpxLayer.addLayer(line);
   });
   gpxPolylines.set(p.name, lines);
@@ -639,7 +639,7 @@ function gpxRowHtml(p) {
   }
   body += `<input type="file" class="gpx-file-input" accept=".gpx,application/gpx+xml,application/xml,text/xml" hidden />`;
   body += `<div class="gpx-status gpx-import-status"></div>`;
-  return `<div class="gpx-row" data-name="${p.name.replace(/"/g, '&quot;')}">${body}</div>`;
+  return `<div class="gpx-row" data-name="${name}">${body}</div>`;
 }
 
 function gpxDetailHtml(p) {
@@ -773,22 +773,33 @@ function clusterIcon(count) {
 
 // popupHtml() reste le nom historique, mais son HTML est injecté dans #peak-panel-body
 // (panneau flottant déplaçable) et non plus dans une popup Leaflet.
+// Le catalogue est éditable par quiconque forke le dépôt : tous ses champs sont échappés avant
+// insertion dans le HTML, et seuls les liens http(s) sont rendus cliquables.
+function safeUrl(url) {
+  return /^https?:\/\//i.test(url || '') ? url : '';
+}
+
 function popupHtml(p) {
   const color = DIFF_COLORS[p.difficulty] || '#555';
   const checked = doneSet.has(p.name) ? 'checked' : '';
+  const name = escapeHtml(p.name);
+  const diff = escapeHtml(p.difficulty);
+  const notes = escapeHtml(p.notes);
+  const source = escapeHtml(p.source);
+  const sourceUrl = safeUrl(p.source_url);
   return `
-    <h3>${p.name}</h3>
-    <div class="pop-meta">${p.altitude_m} m &middot; ${p.massif} &middot; ${p.region} &middot; <a href="https://www.google.com/maps?q=${p.lat},${p.lon}" target="_blank" rel="noopener noreferrer">Voir sur Google Maps</a></div>
-    <span class="badge" style="background:${color}">${p.difficulty}</span>
-    <div class="pop-notes">${p.notes}</div>
-    <div class="pop-source">Source : ${p.source}</div>
-    <button type="button" class="cotation-detail-toggle">Détail de la cotation ${p.difficulty}</button>
+    <h3>${name}</h3>
+    <div class="pop-meta">${escapeHtml(p.altitude_m)} m &middot; ${escapeHtml(p.massif)} &middot; ${escapeHtml(p.region)} &middot; <a href="https://www.google.com/maps?q=${Number(p.lat)},${Number(p.lon)}" target="_blank" rel="noopener noreferrer">Voir sur Google Maps</a></div>
+    <span class="badge" style="background:${color}">${diff}</span>
+    <div class="pop-notes">${notes}</div>
+    <div class="pop-source">Source : ${source}</div>
+    <button type="button" class="cotation-detail-toggle">Détail de la cotation ${diff}</button>
     <div class="cotation-detail-body">
-      <div class="criteria"><strong>Critère général ${p.difficulty}</strong> (échelle CAS/SAC) : ${DIFF_CRITERIA[p.difficulty] || ''}</div>
-      <div class="why"><strong>Pourquoi ce sommet est coté ${p.difficulty}</strong> : ${p.notes}</div>
-      <div class="source-link">Source : ${p.source_url ? `<a href="${p.source_url}" target="_blank" rel="noopener noreferrer">${p.source}</a>` : p.source}. Voir <code>sources.md</code> dans le dépôt pour la méthodologie complète.</div>
+      <div class="criteria"><strong>Critère général ${diff}</strong> (échelle CAS/SAC) : ${DIFF_CRITERIA[p.difficulty] || ''}</div>
+      <div class="why"><strong>Pourquoi ce sommet est coté ${diff}</strong> : ${notes}</div>
+      <div class="source-link">Source : ${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${source}</a>` : source}. Voir <code>sources.md</code> dans le dépôt pour la méthodologie complète.</div>
     </div>
-    <label class="pop-done-row"><input type="checkbox" class="pop-done-checkbox" data-name="${p.name.replace(/"/g, '&quot;')}" ${checked}/> Sommet fait</label>
+    <label class="pop-done-row"><input type="checkbox" class="pop-done-checkbox" data-name="${name}" ${checked}/> Sommet fait</label>
     <div class="pop-comment-row">
       <label>Mon commentaire</label>
       <textarea class="pop-comment-input" placeholder="Notes perso : conditions, ressenti, conseils…">${escapeHtml(p.comment || '')}</textarea>
@@ -1074,11 +1085,11 @@ function renderList() {
       <div class="row1">
         <span>
           <input type="checkbox" class="done-check" ${done ? 'checked' : ''} title="Marquer comme fait" />
-          <span class="name">${p.name}</span>
+          <span class="name">${escapeHtml(p.name)}</span>
         </span>
-        <span class="alt">${p.altitude_m} m</span>
+        <span class="alt">${escapeHtml(p.altitude_m)} m</span>
       </div>
-      <div class="meta"><span class="badge" style="background:${color}">${p.difficulty}</span>${p.massif} &middot; ${p.region}</div>
+      <div class="meta"><span class="badge" style="background:${color}">${escapeHtml(p.difficulty)}</span>${escapeHtml(p.massif)} &middot; ${escapeHtml(p.region)}</div>
     `;
     item.querySelector('.done-check').addEventListener('click', (e) => {
       e.stopPropagation();

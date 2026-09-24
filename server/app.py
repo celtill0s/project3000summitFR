@@ -16,6 +16,7 @@ import os
 import re
 import secrets
 import threading
+import traceback
 import unicodedata
 from email import message_from_bytes
 from email.policy import default as email_default_policy
@@ -118,8 +119,12 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _server_error(self):
+        # Le détail de l'exception reste dans les logs serveur, jamais renvoyé au client.
+        traceback.print_exc()
+        self._json(500, {"error": "erreur interne"})
+
     def _file(self, path: Path, content_type=None, cache=True):
-        real_root = path.parent.resolve()
         try:
             resolved = path.resolve()
         except OSError:
@@ -187,8 +192,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(404, {"error": "not found"})
         except ValueError:
             self._json(400, {"error": "chemin invalide"})
-        except Exception as e:  # pragma: no cover - filet de sécurité
-            self._json(500, {"error": str(e)})
+        except Exception:  # pragma: no cover - filet de sécurité
+            self._server_error()
 
     def do_DELETE(self):
         path = urlparse(self.path).path
@@ -206,8 +211,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(404, {"error": "not found"})
         except KeyError:
             self._json(404, {"error": "sommet inconnu"})
-        except Exception as e:
-            self._json(500, {"error": str(e)})
+        except Exception:
+            self._server_error()
 
     def do_POST(self):
         path = urlparse(self.path).path
@@ -230,12 +235,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(404, {"error": "not found"})
         except KeyError:
             self._json(404, {"error": "sommet inconnu"})
-        except ValueError as e:
-            self._json(413, {"error": str(e)})
+        # JSONDecodeError hérite de ValueError : doit être intercepté AVANT, sinon un JSON
+        # invalide serait signalé comme "payload trop volumineux" (413).
         except json.JSONDecodeError:
             self._json(400, {"error": "JSON invalide"})
-        except Exception as e:
-            self._json(500, {"error": str(e)})
+        except ValueError as e:
+            self._json(413, {"error": str(e)})
+        except Exception:
+            self._server_error()
 
     # ---- actions ----
     def _set_done(self, name, done):

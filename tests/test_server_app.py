@@ -271,3 +271,17 @@ def test_photo_upload_rejects_bad_extension(live_server):
     with pytest.raises(urllib.error.HTTPError) as exc:
         urllib.request.urlopen(req)
     assert exc.value.code == 400
+
+
+def test_invalid_json_returns_400(live_server):
+    name = urllib.parse.quote("Pic de Test")
+    req = urllib.request.Request(
+        f"{live_server}/api/peaks/{name}/done",
+        data=b"{pas du json",
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        urllib.request.urlopen(req)
+    assert exc.value.code == 400
+    assert json.loads(exc.value.read()) == {"error": "JSON invalide"}
