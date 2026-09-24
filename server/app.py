@@ -71,7 +71,7 @@ CONTENT_SECURITY_POLICY = "; ".join([
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https://*.tile.openstreetmap.org",
+    "img-src 'self' data: blob: https://tile.openstreetmap.org",
     "media-src 'self' blob:",
     "connect-src 'self'",
     "object-src 'none'",
@@ -216,7 +216,10 @@ class Handler(BaseHTTPRequestHandler):
     # ---- utilitaires de réponse ----
     def end_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "same-origin")
+        # strict-origin-when-cross-origin (et surtout pas same-origin/no-referrer) : les serveurs de
+        # tuiles OpenStreetMap EXIGENT un Referer (politique d'usage), sinon « Access blocked ».
+        # Seule l'origine est envoyée hors du site, jamais le chemin de la page.
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         self.send_header("Content-Security-Policy", CONTENT_SECURITY_POLICY)
         super().end_headers()
 

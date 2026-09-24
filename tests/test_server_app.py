@@ -232,6 +232,8 @@ def test_security_headers(live_server):
     with urllib.request.urlopen(f"{live_server}/healthz") as r:
         assert r.headers["X-Content-Type-Options"] == "nosniff"
         assert "script-src 'self'" in r.headers["Content-Security-Policy"]
+        # Régression : same-origin/no-referrer supprime le Referer exigé par les tuiles OSM.
+        assert r.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
 
 
 def test_get_mountains_json(live_server):

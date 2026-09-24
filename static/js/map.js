@@ -12,7 +12,8 @@ export function applyResponsiveControlPositions() {
 }
 
 export const map = L.map('map', { zoomControl: true }).setView([44.8, 4.0], 6);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+// URL sans sous-domaine a/b/c : recommandée par OSM depuis leur passage au CDN.
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 18,
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 }).addTo(map);
