@@ -393,3 +393,26 @@ def test_thumbnail_unknown_size_is_404(live_server):
     with pytest.raises(urllib.error.HTTPError) as exc:
         _get(f"{live_server}/thumbs/pic-de-test/123/{result['filename']}")
     assert exc.value.code == 404
+
+
+def test_static_files_are_revalidated_with_etag(live_server, isolated_dirs):
+    static_dir, _ = isolated_dirs
+    js = static_dir / "app.js"
+    js.write_text("console.log(1)", encoding="utf-8")
+    with urllib.request.urlopen(f"{live_server}/app.js") as r:
+        assert r.headers["Cache-Control"] == "no-cache"
+        etag = r.headers["ETag"]
+    # Inchangé : 304 sans corps.
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        _get(f"{live_server}/app.js", {"If-None-Match": etag})
+    assert exc.value.code == 304
+    # Modifié (mise à jour du site) : nouvel ETag, nouveau contenu servi.
+    js.write_text("console.log(2)", encoding="utf-8")
+    status, body = _get(f"{live_server}/app.js", {"If-None-Match": etag})
+    assert status == 200 and body == b"console.log(2)"
+
+
+def test_photos_are_cached_long_and_privately(live_server):
+    _, result = _upload_photo(live_server, "p.jpg", b"\xff\xd8FAKE")
+    with urllib.request.urlopen(f"{live_server}/photos/pic-de-test/{result['filename']}") as r:
+        assert r.headers["Cache-Control"].startswith("private, max-age=31536000")

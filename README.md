@@ -171,6 +171,16 @@ d'une suppression accidentelle, pas d'une panne matérielle. Copie
   un calque Leaflet indépendant, à afficher/masquer via le contrôle en
   haut à droite de la carte ou les puces de la barre latérale (les deux
   restent synchronisés).
+- **Fonds de carte** : par défaut **« Auto »** — OpenStreetMap quand la
+  carte est dézoomée, Plan IGN dès que l'échelle affiche 20 km — zoom 9 (constante
+  `IGN_FROM_ZOOM` dans `static/js/map.js`) ; ou au choix Plan IGN, photos
+  aériennes IGN, OpenStreetMap. Plus une surcouche IGN des **pentes > 30°** (zones
+  potentiellement avalancheuses). Flux publics de la Géoplateforme IGN,
+  sans clé. Les tuiles IGN sont vides hors de France : pour le versant
+  espagnol ou italien d'un sommet frontalier, basculer sur OpenStreetMap.
+  Le fond choisi est mémorisé par le navigateur. (Le SCAN 25, la carte
+  topo « randonnée » IGN, n'est pas disponible sans clé personnelle.)
+- **Échelle** métrique en bas à gauche de la carte.
 - **Filtres** : par massif (Alpes/Pyrénées), par difficulté, par statut
   (fait / à faire), et recherche texte libre (nom, massif).
 - **Suivi "sommet fait"**, **commentaire personnel**, **photos et

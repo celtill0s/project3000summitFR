@@ -563,8 +563,9 @@ html, body { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystem
   }
 
   /* Sélecteur de calques Leaflet natif (T2/T3/T4 + GPX) : sur mobile il est créé avec
-     collapsed:true (voir startsMobile dans app.js) — Leaflet gère alors lui-même le repli/
-     dépli (tap pour ouvrir, tap sur la carte pour refermer). On stylise juste son icône
+     collapsed:true (voir startsMobile dans js/config.js) — Leaflet gère alors lui-même le repli/
+     dépli (tap pour ouvrir, tap sur la carte pour refermer ; le survol est désactivé en JS,
+     voir setupMobileLayersPanel). On stylise juste son icône
      native (par défaut une image de calques) pour afficher une flèche vers le bas. */
   .leaflet-control-layers-toggle {
     width: 34px !important;
@@ -575,6 +576,11 @@ html, body { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystem
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+  /* Sur mobile, la ligne d'attribution (bas droite) occupe presque toute la largeur : l'échelle
+     (bas gauche) est remontée juste au-dessus pour ne pas passer dessous. */
+  .leaflet-control-scale {
+    margin-bottom: 20px !important;
   }
   .leaflet-control-layers-toggle::before {
     content: '▼';

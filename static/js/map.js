@@ -12,11 +12,72 @@ export function applyResponsiveControlPositions() {
 }
 
 export const map = L.map('map', { zoomControl: true }).setView([44.8, 4.0], 6);
+
+// --- Fonds de carte ---
+// IGN : flux WMTS public de la Géoplateforme (data.geopf.fr), gratuit et sans clé. Le SCAN 25
+// (carte topo « randonnée ») n'y est pas : il exige une clé personnelle. Les tuiles IGN sont
+// vides hors de France (versant espagnol des sommets frontaliers) : OSM reste proposé.
+const IGN_ATTRIBUTION = '&copy; <a href="https://www.ign.fr/">IGN</a> – Géoplateforme';
+function ignLayer(layer, format, options) {
+  return L.tileLayer(
+    'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&STYLE=normal' +
+    `&TILEMATRIXSET=PM&LAYER=${layer}&FORMAT=${format}&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`,
+    { maxZoom: 19, attribution: IGN_ATTRIBUTION, ...options }
+  );
+}
+
 // URL sans sous-domaine a/b/c : recommandée par OSM depuis leur passage au CDN.
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 18,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-}).addTo(map);
+function osmLayer(options) {
+  return L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    ...options
+  });
+}
+
+// Fond « Auto » : OSM tant qu'on voit tout un massif (plus lisible à petite échelle), Plan IGN
+// dès qu'on zoome sur un secteur (relief, sentiers, courbes de niveau). Chaque couche n'affiche
+// ses tuiles que dans sa plage de zoom : la bascule se fait toute seule. Les tuiles IGN étant
+// opaques (blanches hors de France), pas de repli automatique sur OSM pour le versant espagnol
+// ou italien : choisir « OpenStreetMap » à la main dans ce cas.
+// Zoom 9 = premier niveau où l'échelle affiche « 20 km » (entre 42° et 46° de latitude, soit
+// tous nos sommets) ; au zoom 8 elle affiche « 30 km ».
+const IGN_FROM_ZOOM = 9;
+const planIgnPath = ['GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2', 'image/png'];
+
+const baseLayers = {
+  'Auto (OSM, puis IGN en zoomant)': L.layerGroup([
+    osmLayer({ maxZoom: IGN_FROM_ZOOM - 1 }),
+    ignLayer(...planIgnPath, { minZoom: IGN_FROM_ZOOM })
+  ]),
+  'Plan IGN': ignLayer(...planIgnPath),
+  'Photos aériennes IGN': ignLayer('ORTHOIMAGERY.ORTHOPHOTOS', 'image/jpeg'),
+  'OpenStreetMap': osmLayer()
+};
+const DEFAULT_BASE_LAYER = 'Auto (OSM, puis IGN en zoomant)';
+
+// Surcouche IGN des pentes > 30° en montagne (zones avalancheuses potentielles) : servie
+// jusqu'au zoom 17, agrandie au-delà.
+const slopesLayer = ignLayer('GEOGRAPHICALGRIDSYSTEMS.SLOPES.MOUNTAIN', 'image/png', {
+  maxNativeZoom: 17,
+  opacity: 0.55
+});
+
+// Le fond choisi est mémorisé dans le navigateur (simple confort : sans stockage disponible,
+// on retombe sur le fond par défaut).
+const BASE_LAYER_KEY = 'summitfr.baseLayer';
+function savedBaseLayerName() {
+  try {
+    const name = localStorage.getItem(BASE_LAYER_KEY);
+    return name in baseLayers ? name : DEFAULT_BASE_LAYER;
+  } catch {
+    return DEFAULT_BASE_LAYER;
+  }
+}
+baseLayers[savedBaseLayerName()].addTo(map);
+map.on('baselayerchange', (e) => {
+  try { localStorage.setItem(BASE_LAYER_KEY, e.name); } catch { /* stockage indisponible */ }
+});
 
 // Groupe de clustering unique (toutes difficultés mélangées) : au dézoom, les sommets proches
 // se regroupent sous un seul logo montagne avec le nombre total de sommets du secteur ; au
@@ -91,8 +152,12 @@ separateAllControl.onAdd = function () {
 };
 separateAllControl.addTo(map);
 
-const layersControl = L.control.layers(null, {
-  '<span style="color:#1f5f8b">&#9473;</span> Traces GPX': gpxLayer
+// Échelle métrique (km/m), en bas à gauche.
+L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
+
+const layersControl = L.control.layers(baseLayers, {
+  '<span style="color:#1f5f8b">&#9473;</span> Traces GPX': gpxLayer,
+  'Pentes &gt; 30° (IGN)': slopesLayer
 }, { collapsed: startsMobile, position: startsMobile ? 'topleft' : 'topright' }).addTo(map);
 
 export const markers = new Map(); // name -> {marker, data}
@@ -147,6 +212,13 @@ export function setupMobileLayersPanel() {
   if (!startsMobile) return;
   const container = layersControl.getContainer();
   if (!container) return;
+
+  // Pas d'ouverture/fermeture au « survol » sur écran tactile : un tap émule mouseenter (le
+  // panneau s'ouvre), puis l'ouverture change la mise en page sous le doigt et le navigateur
+  // émet aussitôt mouseleave — Leaflet refermait le panneau 2 ms après l'avoir ouvert. On ne
+  // garde que les gestes explicites : tap sur la flèche, bouton ✕, tap sur la carte.
+  // (_expandSafely : méthode interne de Leaflet 1.9.4, version figée dans static/vendor/.)
+  L.DomEvent.off(container, { mouseenter: layersControl._expandSafely, mouseleave: layersControl.collapse }, layersControl);
 
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';

@@ -59,19 +59,27 @@ CHUNK_BYTES = 1024 * 1024
 # 480 pour la grille de miniatures, 1920 pour la visionneuse quand l'original n'est pas
 # affichable partout (HEIC).
 THUMB_SIZES = {480, 1920}
+# Politiques de cache. Code du site et traces GPX : revalidés à chaque chargement (ETag -> 304
+# si inchangé, donc quasi gratuit) — sans ça, un navigateur peut garder l'ancien JS après une
+# mise à jour alors que la page (et sa CSP) sont déjà nouvelles. Photos : nom aléatoire jamais
+# réutilisé, donc cache long. Miniatures : un jour (leur contenu change si Pillow est ajouté).
+# "private" : tout le site est derrière une Basic Auth, aucun cache partagé ne doit les garder.
+CACHE_REVALIDATE = "no-cache"
+CACHE_IMMUTABLE = "private, max-age=31536000, immutable"
+CACHE_THUMB = "private, max-age=86400"
 # Extensions autorisées pour le service de fichiers statiques génériques (style.css, app.js…) —
 # whitelist explicite plutôt que "tout ce qui n'est pas une route API", pour ne jamais exposer
 # par erreur un fichier qui traînerait dans static/ (ex. un .py ou un .bak).
 STATIC_ASSET_EXTS = {".css", ".js", ".png", ".jpg", ".jpeg", ".svg", ".ico"}
 
 # Tout est servi depuis la même origine (Leaflet est vendorisé dans static/vendor/) : seules
-# les tuiles OpenStreetMap viennent d'ailleurs. 'unsafe-inline' pour les styles uniquement
+# les tuiles de carte (OpenStreetMap, IGN Géoplateforme) viennent d'ailleurs. 'unsafe-inline' pour les styles uniquement
 # (attributs style="" générés par le frontend), jamais pour les scripts.
 CONTENT_SECURITY_POLICY = "; ".join([
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https://tile.openstreetmap.org",
+    "img-src 'self' data: blob: https://tile.openstreetmap.org https://data.geopf.fr",
     "media-src 'self' blob:",
     "connect-src 'self'",
     "object-src 'none'",
@@ -241,17 +249,26 @@ class Handler(BaseHTTPRequestHandler):
         traceback.print_exc()
         self._json(500, {"error": "erreur interne"})
 
-    def _file(self, path: Path, content_type=None, cache=True):
+    def _file(self, path: Path, content_type=None, cache_control=CACHE_REVALIDATE):
         """Sert un fichier par morceaux (jamais chargé entièrement en mémoire), avec support
         des requêtes Range — indispensable pour lire/avancer dans une vidéo, et exigé par
-        Safari iOS pour lire la moindre vidéo."""
+        Safari iOS pour lire la moindre vidéo — et des requêtes conditionnelles (ETag -> 304)."""
         try:
             resolved = path.resolve()
         except OSError:
             raise ApiError(404, "not found")
         if not resolved.is_file():
             raise ApiError(404, "not found")
-        size = resolved.stat().st_size
+        st = resolved.stat()
+        size = st.st_size
+        etag = f'"{st.st_mtime_ns:x}-{size:x}"'
+        if_none_match = self.headers.get("If-None-Match", "")
+        if etag in (t.strip().removeprefix("W/") for t in if_none_match.split(",")):
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", cache_control)
+            self.end_headers()
+            return
         byte_range = parse_range(self.headers.get("Range"), size) if size else None
         start, end = byte_range or (0, size - 1)
         length = end - start + 1 if size else 0
@@ -261,7 +278,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Accept-Ranges", "bytes")
         if byte_range:
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
-        self.send_header("Cache-Control", "public, max-age=60" if cache else "no-store")
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", cache_control)
         self.end_headers()
         if self.command == "HEAD":
             return
@@ -372,17 +390,17 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/healthz":
             self._json(200, {"ok": True})
         elif path in ("/", "/index.html"):
-            self._file(STATIC_DIR / "index.html", "text/html; charset=utf-8", cache=False)
+            self._file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
         elif path == "/mountains.json":
             self._json(200, merged_peaks())
         elif path.startswith("/photos/"):
             rel = unquote(path[len("/photos/"):])
-            self._file(self._safe_rel_path(PHOTOS_DIR, rel))
+            self._file(self._safe_rel_path(PHOTOS_DIR, rel), cache_control=CACHE_IMMUTABLE)
         elif path.startswith("/thumbs/"):
             self._thumb(unquote(path[len("/thumbs/"):]))
         elif path.startswith("/gpx/"):
             rel = unquote(path[len("/gpx/"):])
-            self._file(self._safe_rel_path(GPX_DIR, rel), cache=False)
+            self._file(self._safe_rel_path(GPX_DIR, rel))
         elif Path(unquote(path)).suffix.lower() in STATIC_ASSET_EXTS:
             rel = unquote(path).lstrip("/")
             self._file(self._safe_rel_path(STATIC_DIR, rel))
@@ -431,7 +449,7 @@ class Handler(BaseHTTPRequestHandler):
         if not src.is_file():
             raise ApiError(404, "not found")
         if Image is None or src.suffix.lower() not in IMAGE_EXTS:
-            self._file(src)
+            self._file(src, cache_control=CACHE_THUMB)
             return
         dest = self._safe_rel_path(THUMBS_DIR, f"{peak_id}/{size}/{filename}.jpg")
         if not dest.is_file():
@@ -439,9 +457,9 @@ class Handler(BaseHTTPRequestHandler):
                 make_thumbnail(src, dest, size)
             except Exception:
                 traceback.print_exc()
-                self._file(src)
+                self._file(src, cache_control=CACHE_THUMB)
                 return
-        self._file(dest, "image/jpeg")
+        self._file(dest, "image/jpeg", cache_control=CACHE_THUMB)
 
     def _set_field(self, peak_id, field, value):
         with lock:
