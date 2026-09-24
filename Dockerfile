@@ -8,7 +8,10 @@ ENV PORT=8000 \
 # Tourne en utilisateur non-root (uid/gid 1000, aligné sur l'utilisateur hôte qui possède le
 # bind-mount ./data) : un éventuel bug d'écriture/traversal reste confiné à cet utilisateur,
 # pas root dans le conteneur.
-RUN groupadd -g 1000 app && useradd -u 1000 -g 1000 -M -s /usr/sbin/nologin app
+RUN groupadd -g 1000 app && useradd -u 1000 -g 1000 -M -s /usr/sbin/nologin app \
+    && mkdir -p /data && chown app:app /data
+# /data pré-créé et possédé par app : l'image démarre même sans volume (CI, test rapide).
+# En production, le bind-mount ./data le remplace — ce dossier hôte doit appartenir à l'uid 1000.
 USER app
 EXPOSE 8000
 CMD ["python3", "server/app.py"]

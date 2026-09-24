@@ -83,8 +83,14 @@ cd project3000summitFR
 2. **Lancer** :
 
    ```bash
+   mkdir -p data   # à créer AVANT le premier lancement, voir ci-dessous
    docker compose up -d --build
    ```
+
+   `data/` doit exister et appartenir à l'uid 1000 (l'utilisateur non-root
+   du conteneur) : si Docker le crée lui-même au lancement, il appartient
+   à root et l'appli plante (`PermissionError: '/data'`). Correction :
+   `sudo chown -R 1000:1000 data`.
 
    Le site écoute alors sur `127.0.0.1:8087` (modifiable dans
    `docker-compose.yml`), protégé par la Basic Auth.
