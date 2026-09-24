@@ -15,3 +15,5 @@ __pycache__/
 # Recherche de travail (saisons par sommet) : brouillon local, jamais commité tant que
 # non validé.
 /research/
+
+node_modules/

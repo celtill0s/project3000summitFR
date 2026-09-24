@@ -146,6 +146,10 @@ d'une suppression accidentelle, pas d'une panne matérielle. Copie
   en premier), carte Leaflet avec un **calque par niveau de difficulté**
   (T2/T3/T4), panneau flottant déplaçable par sommet (cotation détaillée,
   case "fait", commentaire, photos/vidéos, trace GPX).
+- **`static/js/`** — le code du frontend, en modules ES natifs (pas de
+  bundler, pas de `npm install` pour faire tourner l'appli) : `main.js`
+  (point d'entrée), `map.js`, `panel.js`, `sidebar.js`, `gpx.js`,
+  `photos.js`, `lightbox.js`… ; `eslint.config.mjs` sert uniquement à la CI.
 - **`static/mountains.json`** — le catalogue public : nom, altitude,
   coordonnées, massif, région, cotation de difficulté (échelle CAS/SAC),
   notes d'accès, source.

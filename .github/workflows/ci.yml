@@ -29,14 +29,17 @@ jobs:
       - run: pytest -q
 
   frontend:
-    name: Syntaxe JS
+    name: Lint JS
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --check static/app.js
+      # Pas de package.json : ESLint n'est qu'un outil de CI, le frontend n'a aucune dépendance npm.
+      - run: npm install --no-save --no-package-lock eslint@9 globals
+      # no-undef / no-unused-vars : attrape un import oublié ou une faute de frappe entre modules.
+      - run: npx eslint
 
   docker:
     name: Build + healthcheck Docker
