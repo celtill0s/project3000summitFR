@@ -16,7 +16,7 @@ courses personnel.**
 
 [Aperçu](#-aperçu) · [Démarrage rapide](#-démarrage-rapide) · [Auto-hébergement](#-auto-hébergement-sur-son-propre-serveur) · [Fonctionnalités](#-fonctionnalités) · [Catalogue](#-modifier-le-catalogue) · [Appli Android](android/README.md)
 
-<img src="screenshots/01-vue-generale.png" alt="Vue générale : la carte des sommets regroupés par secteur et la liste triée par altitude">
+<img src="screenshots/01-vue-generale.jpg" alt="Vue générale : la carte des sommets regroupés par secteur et la liste triée par altitude">
 
 </div>
 
@@ -25,17 +25,17 @@ courses personnel.**
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="screenshots/02-fiche-sommet.png" alt="Fiche d'un sommet sur le Plan IGN">
+      <img src="screenshots/02-fiche-sommet.jpg" alt="Fiche d'un sommet sur le Plan IGN">
       <p align="center"><b>Fiche de chaque sommet</b><br>cotation CAS/SAC détaillée, source, sommet fait, commentaire, photos/vidéos, trace GPX — sur fond Plan IGN</p>
     </td>
     <td width="50%" valign="top">
-      <img src="screenshots/03-ajout-sommet.gif" alt="Ajout d'un sommet personnel : formulaire, placement à la souris, validation">
+      <img src="screenshots/03-ajout-sommet.webp" alt="Ajout d'un sommet personnel : formulaire, placement à la souris, validation">
       <p align="center"><b>Tes propres sommets</b><br>formulaire, puis placement en faisant glisser le marqueur, et validation — visibles de toi seul</p>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="screenshots/05-mobile.png" alt="Version mobile : carte plein écran et liste">
+      <img src="screenshots/05-mobile.jpg" alt="Version mobile : carte plein écran et liste">
       <p align="center"><b>Sur téléphone</b><br>carte plein écran, liste à la demande ; installable (PWA) ou en <a href="android/README.md">appli Android</a>, utilisable hors-ligne</p>
     </td>
     <td width="50%" valign="top">
