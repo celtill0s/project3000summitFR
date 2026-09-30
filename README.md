@@ -56,6 +56,14 @@ compte). Trois rôles :
 - Données : `data/users.json` (comptes), `data/sessions.json` (sessions,
   seule l'empreinte du jeton est gardée), `data/users/<identifiant>/`
   (espace de chaque utilisateur).
+- **5 Go maximum par utilisateur** (photos, vidéos, GPX ; miniatures non
+  comptées) : au-delà, les envois sont refusés et un bandeau rouge reste
+  affiché sur son espace tant qu'il n'a pas libéré de place. L'admin voit
+  l'espace occupé par chacun dans « Utilisateurs ». Limite modifiable :
+  `QUOTA_BYTES` dans `server/storage.py`.
+- Chaque membre peut **ajouter ses propres sommets** (➕ Ajouter un sommet),
+  les placer sur la carte, puis les modifier ou les supprimer : ils ne sont
+  visibles que dans son espace (`custom_peaks.json`).
 
 Commandes d'administration (sur le serveur) :
 
@@ -198,7 +206,11 @@ d'une suppression accidentelle, pas d'une panne matérielle. Copie
 - **`static/mountains.json`** — le catalogue public : nom, altitude,
   coordonnées, massif, région, cotation de difficulté (échelle CAS/SAC),
   notes d'accès, source.
-- **`server/app.py`** — le backend (voir "Architecture" ci-dessus).
+- **`server/`** — le backend (voir "Architecture" ci-dessus) : `app.py`
+  (serveur HTTP, table des routes, démarrage), `auth.py` (comptes,
+  sessions), `storage.py` (catalogue et espaces personnels sur disque),
+  `files.py` (pages versionnées, GPX, miniatures), `cli.py` (commandes
+  d'administration).
 - **`static/vendor/`** — Leaflet 1.9.4 et Leaflet.markercluster 1.5.3,
   copiés tels quels (avec leur licence) : aucun script chargé depuis un
   CDN tiers.
@@ -206,6 +218,7 @@ d'une suppression accidentelle, pas d'une panne matérielle. Copie
   (comptes), `sessions.json` (sessions), et un dossier par utilisateur
   `users/<identifiant>/` : `progress.json` (sommets faits, commentaires,
   références photos-vidéos-gpx, indexés par `id` de sommet),
+  `custom_peaks.json` (sommets ajoutés à la main, visibles de lui seul),
   `photos/<id>/`, `gpx/<id>.gpx`, `thumbs/` (miniatures, régénérables :
   inutile de les sauvegarder).
 - **`android/`** — l'appli Android (voir `android/README.md`), construite et
@@ -302,6 +315,14 @@ tirets.
 
 `pytest` valide automatiquement le catalogue (champs, cotations,
 coordonnées, unicité des ids) — lancé aussi par la CI à chaque push.
+
+Tests : `pip install -r requirements-dev.txt`, une fois
+`python -m playwright install chromium`, puis `pytest`. Ils couvrent le
+serveur (`tests/test_server_app.py`), le catalogue (`tests/test_catalog.py`)
+et le site dans un vrai navigateur (`tests/test_frontend.py` : connexion,
+filtres, sommet fait, commentaire, ajout/modification/suppression d'un
+sommet, bandeau d'espace plein, consultation admin). Sans Chromium, ces
+derniers sont simplement ignorés.
 
 (Les champs `done`, `comment`, `photos`, `gpx` ne font **pas** partie du
 catalogue : ce sont des données personnelles, propres à chaque utilisateur

@@ -17,7 +17,8 @@ function randomPassword(length = 14) {
 function statsText(u) {
   if (u.role === 'guest') return 'catalogue seul';
   const plural = (n, word) => `${n} ${word}${n > 1 ? 's' : ''}`;
-  return `${plural(u.done, 'sommet')} fait${u.done > 1 ? 's' : ''} · ${plural(u.photos, 'photo')} · ${u.gpx} GPX`;
+  const size = `${(u.bytes / 1024 ** 3).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} Go`;
+  return `${plural(u.done, 'sommet')} fait${u.done > 1 ? 's' : ''} · ${plural(u.photos, 'photo')} · ${u.gpx} GPX · ${size}`;
 }
 
 function userRowHtml(u) {

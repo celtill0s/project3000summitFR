@@ -4,18 +4,23 @@ N'utilisent jamais le vrai static/mountains.json ni le vrai data/ du dépôt —
 dans un dossier temporaire par test (voir isolated_dirs)."""
 import io
 import json
+import os
 import re
+import socket
+import subprocess
+import sys
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 
 import pytest
 
 from server import app as server_app
-from server import auth
+from server import auth, cli, storage
 
 PASSWORD = "motdepasse-1234"
 SAMPLE_CATALOG = [
@@ -65,9 +70,8 @@ def isolated_dirs(tmp_path, monkeypatch):
     (static_dir / "index.html").write_text('<link href="style.css"><p>carte</p>', encoding="utf-8")
     (static_dir / "login.html").write_text('<link href="style.css"><p>connexion</p>', encoding="utf-8")
     (static_dir / "style.css").write_text("body {}", encoding="utf-8")
-    monkeypatch.setattr(server_app, "STATIC_DIR", static_dir)
-    monkeypatch.setattr(server_app, "DATA_DIR", data_dir)
-    monkeypatch.setattr(server_app, "CATALOG_PATH", static_dir / "mountains.json")
+    monkeypatch.setattr(storage, "STATIC_DIR", static_dir)
+    monkeypatch.setattr(storage, "DATA_DIR", data_dir)
     monkeypatch.setattr(server_app, "throttle", auth.LoginThrottle())
     return static_dir, data_dir
 
@@ -256,6 +260,11 @@ def test_user_store_rules(isolated_dirs):
     assert store.authenticate("alice", PASSWORD) == {"username": "alice", "role": "admin"}
     assert store.authenticate("alice", "mauvais-mot-de-passe") is None
     assert store.authenticate("inconnu", PASSWORD) is None
+    for change in (lambda: store.set_password("inconnu", PASSWORD), lambda: store.set_role("inconnu", "member"),
+                   lambda: store.delete("inconnu")):
+        with pytest.raises(KeyError):
+            change()
+    assert store.count() == 1
     # jamais d'empreinte de mot de passe dans all()
     assert "hash" not in json.dumps(store.all())
 
@@ -419,6 +428,9 @@ def _matrix_cases():
         (anon, "GET", "/photos/bob/pic-de-test/{bob}", 401),
         (anon, "GET", "/thumbs/bob/480/pic-de-test/{bob}", 401),
         (anon, "GET", "/gpx/bob/pic-de-test.gpx", 401),
+        (anon, "POST", "/api/peaks", 401),
+        (anon, "POST", "/api/peaks/pic-de-test", 401),
+        (anon, "DELETE", "/api/peaks/pic-de-test", 401),
         (anon, "POST", "/api/peaks/pic-de-test/done", 401),
         (anon, "POST", "/api/peaks/pic-de-test/comment", 401),
         (anon, "POST", "/api/peaks/pic-de-test/photos", 401),
@@ -438,6 +450,9 @@ def _matrix_cases():
         (guest, "GET", "/thumbs/bob/480/pic-de-test/{bob}", 403),
         (guest, "GET", "/gpx/bob/pic-de-test.gpx", 403),
         (guest, "POST", "/api/peaks/pic-de-test/done", 403),
+        (guest, "POST", "/api/peaks", 403),
+        (guest, "POST", "/api/peaks/pic-de-test", 403),
+        (guest, "DELETE", "/api/peaks/pic-de-test", 403),
         (guest, "POST", "/api/peaks/pic-de-test/photos?filename=x.jpg", 403),
         (guest, "DELETE", "/api/peaks/pic-de-test/gpx", 403),
         (guest, "GET", "/api/admin/users", 403),
@@ -451,6 +466,7 @@ def _matrix_cases():
         (bob, "GET", "/mountains.json?space=alice", 403),
         (carol, "GET", "/photos/bob/pic-de-test/{bob}", 403),
         (bob, "GET", "/api/admin/users", 403),
+        (bob, "DELETE", "/api/peaks/pic-de-test", 404),  # sommet du catalogue : pas supprimable
         (bob, "POST", "/api/admin/users", 403),
         (bob, "DELETE", "/api/admin/users/carol", 403),
         (bob, "POST", "/api/admin/users/carol/password", 403),
@@ -526,13 +542,159 @@ def test_admin_writes_go_to_own_space(client, populated):
 
 
 def test_invalid_json_returns_400(client, users):
-    status, body = logged_in(client, "bob").json("POST", "/api/peaks/pic-de-test/done", data=b"{pas du json",
-                                                 headers={"Content-Type": "application/json"})
-    assert status == 400 and body == {"error": "JSON invalide"}
+    c = logged_in(client, "bob")
+    for payload in (b"{pas du json", b"[1, 2]"):
+        status, body = c.json("POST", "/api/peaks/pic-de-test/done", data=payload,
+                              headers={"Content-Type": "application/json"})
+        assert status == 400 and body == {"error": "JSON invalide"}
 
 
 def test_unknown_peak_returns_404(client, users):
     assert logged_in(client, "bob").json("POST", "/api/peaks/inexistant/done", json_body={"done": True})[0] == 404
+
+
+# ---------------------------------------------------------------------------
+# Sommets ajoutés à la main
+# ---------------------------------------------------------------------------
+
+CUSTOM_PEAK = {
+    "name": "Pointe Perso", "altitude_m": 3012, "lat": 45.1, "lon": 6.2, "difficulty": "T2",
+    "region": "Alpes", "massif": "Écrins", "notes": "Par le vallon.",
+    "links": ["https://www.camptocamp.org/routes/1"],
+}
+
+
+def add_custom(c, **overrides):
+    return c.json("POST", "/api/peaks", json_body={**CUSTOM_PEAK, **overrides})
+
+
+def test_custom_peak_is_private_to_its_owner(client, users, isolated_dirs):
+    bob = logged_in(client, "bob")
+    status, peak = add_custom(bob)
+    assert status == 200 and peak["id"].startswith("perso-pointe-perso-") and peak["custom"]
+    assert peak["links"] == CUSTOM_PEAK["links"] and peak["lat"] == 45.1
+    assert peak_of(bob, peak["id"])["name"] == "Pointe Perso"
+    # ni dans le catalogue public, ni chez les autres
+    assert "Pointe Perso" not in (isolated_dirs[0] / "mountains.json").read_text()
+    for other in ("carol", "gus", "alice"):
+        _, peaks = logged_in(client, other).json("GET", "/mountains.json")
+        assert all(p["id"] != peak["id"] for p in peaks)
+    # un admin le voit en consultant l'espace de bob
+    assert peak_of(logged_in(client, "alice"), peak["id"], space="bob")["name"] == "Pointe Perso"
+    # carol ne peut ni l'utiliser ni le supprimer
+    carol = logged_in(client, "carol")
+    assert carol.json("POST", f"/api/peaks/{peak['id']}/done", json_body={"done": True})[0] == 404
+    assert carol.json("DELETE", f"/api/peaks/{peak['id']}")[0] == 404
+
+
+def test_custom_peak_supports_personal_data_and_delete(client, users, isolated_dirs):
+    bob = logged_in(client, "bob")
+    _, peak = add_custom(bob)
+    pid = peak["id"]
+    assert bob.json("POST", f"/api/peaks/{pid}/done", json_body={"done": True})[0] == 200
+    assert bob.json("POST", f"/api/peaks/{pid}/comment", json_body={"comment": "super"})[0] == 200
+    assert upload_photo(bob, pid, "p.jpg", b"\xff\xd8\xff\xe0FAKE")[0] == 200
+    assert bob.json("POST", f"/api/peaks/{pid}/gpx", data=GPX_SAMPLE)[0] == 200
+    p = peak_of(bob, pid)
+    assert p["done"] and p["comment"] == "super" and len(p["photos"]) == 1 and p["gpx"]
+
+    assert bob.json("DELETE", f"/api/peaks/{pid}")[0] == 200
+    _, peaks = bob.json("GET", "/mountains.json")
+    assert all(p["id"] != pid for p in peaks)
+    user = isolated_dirs[1] / "users" / "bob"
+    assert not (user / "photos" / pid).exists() and not (user / "gpx" / f"{pid}.gpx").exists()
+    assert pid not in json.loads((user / "progress.json").read_text())
+
+
+@pytest.mark.parametrize("overrides", [
+    {"name": ""},
+    {"name": 123},
+    {"name": "pic de test"},  # déjà au catalogue
+    {"difficulty": "T6"},
+    {"region": "Vosges"},
+    {"altitude_m": "3000"},
+    {"lat": 120},
+    {"lon": True},
+    {"links": ["javascript:alert(1)"]},
+    {"links": "https://a.b"},
+    {"notes": "x" * 5001},
+])
+def test_custom_peak_validation(client, users, overrides):
+    assert add_custom(logged_in(client, "bob"), **overrides)[0] in (400, 409)
+
+
+def test_custom_peak_name_must_be_unique_in_own_space(client, users):
+    bob = logged_in(client, "bob")
+    assert add_custom(bob)[0] == 200
+    assert add_custom(bob, name="POINTE perso")[0] == 409
+    assert add_custom(logged_in(client, "carol"))[0] == 200  # autre espace : autorisé
+
+
+def test_custom_peak_update_keeps_id_and_personal_data(client, users):
+    bob = logged_in(client, "bob")
+    _, peak = add_custom(bob)
+    pid = peak["id"]
+    bob.json("POST", f"/api/peaks/{pid}/comment", json_body={"comment": "super"})
+    assert upload_photo(bob, pid, "p.jpg", b"\xff\xd8\xff\xe0FAKE")[0] == 200
+    changes = {**CUSTOM_PEAK, "name": "Pointe Renommée", "altitude_m": 3050, "lat": 45.2, "difficulty": "T3",
+               "links": []}
+    status, updated = bob.json("POST", f"/api/peaks/{pid}", json_body=changes)
+    assert status == 200 and updated["id"] == pid and updated["custom"] and updated["source"] == "Ajout manuel"
+    p = peak_of(bob, pid)
+    assert (p["name"], p["altitude_m"], p["lat"], p["difficulty"], p["links"]) == ("Pointe Renommée", 3050, 45.2, "T3", [])
+    assert p["comment"] == "super" and len(p["photos"]) == 1
+    # garder son propre nom est permis ; prendre celui d'un autre sommet ne l'est pas
+    assert bob.json("POST", f"/api/peaks/{pid}", json_body=changes)[0] == 200
+    assert bob.json("POST", f"/api/peaks/{pid}", json_body={**changes, "name": "Pic de Test"})[0] == 409
+    assert bob.json("POST", f"/api/peaks/{pid}", json_body={**changes, "difficulty": "T9"})[0] == 400
+
+
+def test_only_own_custom_peaks_can_be_updated(client, users):
+    _, peak = add_custom(logged_in(client, "bob"))
+    carol = logged_in(client, "carol")
+    assert carol.json("POST", f"/api/peaks/{peak['id']}", json_body=CUSTOM_PEAK)[0] == 404
+    assert carol.json("POST", "/api/peaks/pic-de-test", json_body=CUSTOM_PEAK)[0] == 404  # catalogue
+    assert peak_of(logged_in(client, "bob"), peak["id"])["name"] == "Pointe Perso"
+
+
+# ---------------------------------------------------------------------------
+# Quota d'espace disque par utilisateur
+# ---------------------------------------------------------------------------
+
+def test_storage_is_reported(client, users):
+    bob = logged_in(client, "bob")
+    assert bob.json("GET", "/api/me")[1]["storage"] == {"used": 0, "limit": 5 * 1024 ** 3}
+    status, result = upload_photo(bob, "pic-de-test", "p.jpg", b"x" * 1000)
+    assert status == 200 and result["storage"]["used"] >= 1000
+    assert "storage" not in logged_in(client, "gus").json("GET", "/api/me")[1]
+    users_list = logged_in(client, "alice").json("GET", "/api/admin/users")[1]["users"]
+    assert next(u for u in users_list if u["username"] == "bob")["bytes"] >= 1000
+
+
+def test_uploads_refused_when_quota_reached(client, users, isolated_dirs, monkeypatch):
+    monkeypatch.setattr(storage, "QUOTA_BYTES", 3000)
+    bob = logged_in(client, "bob")
+    status, first = upload_photo(bob, "pic-de-test", "a.jpg", b"x" * 2000)
+    assert status == 200
+    status, body = upload_photo(bob, "pic-de-test", "b.jpg", b"x" * 2000)
+    assert status == 507 and "espace de stockage plein" in body["error"]
+    assert body["storage"]["limit"] == 3000 and body["storage"]["used"] >= 2000
+    assert bob.json("POST", "/api/peaks/pic-de-test/gpx", data=GPX_SAMPLE + b" " * 1500)[0] == 507
+    assert len(peak_of(bob)["photos"]) == 1  # rien n'a été écrit
+    # un autre utilisateur a son propre quota
+    assert upload_photo(logged_in(client, "carol"), "pic-de-test", "c.jpg", b"x" * 2000)[0] == 200
+    # libérer de la place débloque les envois
+    status, body = bob.json("DELETE", f"/api/peaks/pic-de-test/photos/{first['filename']}")
+    assert status == 200 and body["storage"]["used"] < 2000
+    assert upload_photo(bob, "pic-de-test", "b.jpg", b"x" * 2000)[0] == 200
+
+
+def test_thumbnails_do_not_count_in_quota(isolated_dirs):
+    thumbs = isolated_dirs[1] / "users" / "bob" / "thumbs" / "pic-de-test" / "480"
+    thumbs.mkdir(parents=True)
+    (thumbs / "a.jpg.jpg").write_bytes(b"x" * 5000)
+    (isolated_dirs[1] / "users" / "bob" / "progress.json").write_text("{}")
+    assert storage.space_usage("bob") == 2
 
 
 def test_photo_upload_and_delete_roundtrip(client, users, isolated_dirs):
@@ -617,6 +779,15 @@ def test_thumbnail_unknown_size_is_404(client, users):
     assert c.get(f"/thumbs/bob/123/pic-de-test/{result['filename']}")[0] == 404
 
 
+def test_thumbnail_falls_back_to_original(client, users):
+    c = logged_in(client, "bob")
+    _, broken = upload_photo(c, "pic-de-test", "illisible.jpg", b"\xff\xd8FAKE")
+    _, video = upload_photo(c, "pic-de-test", "clip.mp4", b"VIDEO")
+    assert c.get(f"/thumbs/bob/480/pic-de-test/{broken['filename']}")[2] == b"\xff\xd8FAKE"
+    assert c.get(f"/thumbs/bob/480/pic-de-test/{video['filename']}")[2] == b"VIDEO"
+    assert c.get("/thumbs/bob/480/pic-de-test/absente.jpg")[0] == 404
+
+
 # ---------------------------------------------------------------------------
 # Administration des comptes
 # ---------------------------------------------------------------------------
@@ -668,6 +839,70 @@ def test_admin_delete_user_and_data(client, populated, isolated_dirs):
     assert admin.json("DELETE", "/api/admin/users/bob")[0] == 404
 
 
+def test_admin_rejects_invalid_password_and_role(client, users):
+    admin = logged_in(client, "alice")
+    assert admin.json("POST", "/api/admin/users/bob/password", json_body={"password": "court"})[0] == 400
+    assert admin.json("POST", "/api/admin/users/bob/role", json_body={"role": "roi"})[0] == 400
+    assert client().login("bob")[0] == 200  # rien n'a changé
+
+
+# ---------------------------------------------------------------------------
+# Robustesse HTTP : corps de requête, erreurs internes
+# ---------------------------------------------------------------------------
+
+def raw_request(base, head: bytes, body: bytes = b""):
+    """Envoie une requête HTTP brute (en-têtes choisis à la main), puis ferme l'envoi."""
+    host, port = urllib.parse.urlparse(base).netloc.split(":")
+    with socket.create_connection((host, int(port)), timeout=5) as s:
+        s.sendall(head + body)
+        s.shutdown(socket.SHUT_WR)
+        data = b""
+        while chunk := s.recv(65536):
+            data += chunk
+    status_line, _, rest = data.partition(b"\r\n")
+    return int(status_line.split()[1]), rest.partition(b"\r\n\r\n")[2]
+
+
+def _upload_head(session, length_header):
+    return (f"POST /api/peaks/pic-de-test/photos?filename=a.jpg HTTP/1.1\r\nHost: x\r\n"
+            f"Cookie: session={session}\r\nX-Requested-With: SommetsApp\r\n{length_header}\r\n").encode()
+
+
+@pytest.mark.parametrize("length_header,body,status,message", [
+    ("", b"", 411, "Content-Length requis"),
+    ("Content-Length: abc\r\n", b"", 400, "Content-Length invalide"),
+    ("Content-Length: 0\r\n", b"", 400, "fichier vide"),
+    ("Content-Length: 1000\r\n", b"x" * 10, 400, "envoi interrompu"),
+])
+def test_upload_body_errors(live_server, client, users, isolated_dirs, length_header, body, status, message):
+    session = logged_in(client, "bob").session
+    got_status, got_body = raw_request(live_server, _upload_head(session, length_header), body)
+    assert got_status == status and json.loads(got_body)["error"] == message
+    photos = isolated_dirs[1] / "users" / "bob" / "photos"
+    assert not photos.exists() or not any(photos.rglob("*.*"))  # aucun fichier (ni temporaire) laissé
+
+
+def test_internal_error_hides_details(client, users, monkeypatch, capsys):
+    def boom(*args):
+        raise RuntimeError("détail secret")
+    monkeypatch.setattr(server_app, "merged_peaks", boom)
+    status, _, body = logged_in(client, "bob").get("/mountains.json")
+    assert status == 500 and json.loads(body) == {"error": "erreur interne"}
+    assert "détail secret" in capsys.readouterr().err  # dans les logs serveur uniquement
+
+
+def test_session_is_extended_when_used(isolated_dirs, monkeypatch):
+    store = server_app.sessions_store()
+    token = store.create("alice")
+    real_time = time.time
+    later = real_time() + auth.SessionStore.TOUCH_INTERVAL + 60
+    monkeypatch.setattr(auth.time, "time", lambda: later)
+    assert store.get(token) == "alice"
+    # Sans cette prolongation, la session aurait expiré à TTL après sa création.
+    monkeypatch.setattr(auth.time, "time", lambda: real_time() + auth.SessionStore.TTL + 10)
+    assert store.get(token) == "alice"
+
+
 # ---------------------------------------------------------------------------
 # Site : en-têtes, cache, pages versionnées
 # ---------------------------------------------------------------------------
@@ -717,11 +952,11 @@ def test_legacy_data_migrates_to_admin(isolated_dirs):
     # ancien format : indexé par nom de sommet
     (data / "progress.json").write_text(json.dumps({"Pic de Test": {
         "done": True, "comment": "ancien", "photos": [{"filename": "a.jpg", "type": "image"}], "gpx": "pic-de-test.gpx"}}))
-    assert server_app.legacy_data_present()
-    moved = server_app.migrate_legacy_to("alice")
+    assert cli.legacy_data_present()
+    moved = cli.migrate_legacy_to("alice")
     assert set(moved) == {"progress.json", "photos", "gpx"}
-    assert not server_app.legacy_data_present()
-    p = next(x for x in server_app.merged_peaks("alice") if x["id"] == "pic-de-test")
+    assert not cli.legacy_data_present()
+    p = next(x for x in storage.merged_peaks("alice") if x["id"] == "pic-de-test")
     assert p["done"] and p["comment"] == "ancien" and p["photos"] == ["a.jpg"] and p["gpx"] == "/gpx/alice/pic-de-test.gpx"
     assert (data / "users" / "alice" / "photos" / "pic-de-test" / "a.jpg").read_bytes() == b"photo"
 
@@ -732,21 +967,41 @@ def test_legacy_migration_never_overwrites(isolated_dirs):
     (data / "users" / "alice").mkdir(parents=True)
     (data / "users" / "alice" / "progress.json").write_text('{"x": 1}')
     with pytest.raises(RuntimeError):
-        server_app.migrate_legacy_to("alice")
+        cli.migrate_legacy_to("alice")
     assert (data / "users" / "alice" / "progress.json").read_text() == '{"x": 1}'
 
 
 def test_cli_create_admin_and_set_password(isolated_dirs, monkeypatch, capsys):
     (isolated_dirs[1] / "progress.json").write_text("{}")
     answers = iter(["court", PASSWORD, "different-1234", PASSWORD, PASSWORD])
-    monkeypatch.setattr(server_app.getpass, "getpass", lambda prompt="": next(answers))
-    assert server_app.cli(["create-admin", "Alice"]) == 0
+    monkeypatch.setattr(cli.getpass, "getpass", lambda prompt="": next(answers))
+    assert cli.cli(["create-admin", "Alice"]) == 0
     out = capsys.readouterr().out
     assert "créé" in out and "rattachées" in out
-    assert server_app.users_store().get("alice") == {"username": "alice", "role": "admin"}
+    assert storage.users_store().get("alice") == {"username": "alice", "role": "admin"}
     answers2 = iter(["nouveau-mdp-1234", "nouveau-mdp-1234"])
-    monkeypatch.setattr(server_app.getpass, "getpass", lambda prompt="": next(answers2))
-    assert server_app.cli(["set-password", "alice"]) == 0
-    assert server_app.users_store().authenticate("alice", "nouveau-mdp-1234")
-    assert server_app.cli(["set-password", "inconnu"]) == 1
-    assert server_app.cli(["n-importe-quoi"]) == 2
+    monkeypatch.setattr(cli.getpass, "getpass", lambda prompt="": next(answers2))
+    assert cli.cli(["set-password", "alice"]) == 0
+    assert storage.users_store().authenticate("alice", "nouveau-mdp-1234")
+    assert cli.cli(["set-password", "inconnu"]) == 1
+    assert cli.cli(["n-importe-quoi"]) == 2
+
+
+def test_cli_list_users_and_bad_arguments(isolated_dirs, capsys):
+    storage.users_store().create("alice", PASSWORD, "admin")
+    assert cli.cli(["list-users"]) == 0
+    assert re.search(r"alice\s+admin", capsys.readouterr().out)
+    assert cli.cli(["create-admin"]) == 2                   # identifiant manquant
+    assert cli.cli(["create-admin", "../etc"]) == 1         # identifiant invalide
+    assert "erreur" in capsys.readouterr().out
+
+
+def test_server_runs_as_script(isolated_dirs):
+    """`python3 server/app.py …` (Dockerfile, README) : les imports du paquet doivent marcher."""
+    storage.users_store().create("alice", PASSWORD, "admin")
+    script = Path(server_app.__file__)
+    env = {**os.environ, "DATA_DIR": str(isolated_dirs[1]), "STATIC_DIR": str(isolated_dirs[0])}
+    result = subprocess.run([sys.executable, str(script), "list-users"], cwd="/", env=env,
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert re.search(r"alice\s+admin", result.stdout)

@@ -3,12 +3,12 @@ import { escapeHtml } from './util.js';
 import { PEAKS } from './store.js';
 import { apiDelete, apiUpload, peakApiBase } from './api.js';
 import { gpxLayer, map } from './map.js';
-import { activePeakName } from './panel.js';
+import { activePeakId } from './panel.js';
 import { nativeApp, saveFileNatively } from './app-bridge.js';
 
 // --- GPX : uploadée vers le serveur, servie ensuite depuis /gpx/<id>.gpx (une seule source de
 // vérité, plus de distinction "importé en local" vs "fourni par le dépôt"). ---
-const gpxPolylines = new Map(); // name -> [L.Polyline, ...]
+const gpxPolylines = new Map(); // id -> [L.Polyline, ...]
 
 function parseGpxFull(gpxText) {
   const doc = new DOMParser().parseFromString(gpxText, 'application/xml');
@@ -118,36 +118,36 @@ function elevationProfileSvg(points, width, height) {
   `;
 }
 
-const gpxData = new Map(); // name -> { stats, points }
-const gpxRawText = new Map(); // name -> texte GPX brut (importé OU chargé depuis le dépôt), pour le bouton "Télécharger"
+const gpxData = new Map(); // id -> { stats, points }
+const gpxRawText = new Map(); // id -> texte GPX brut (importé OU chargé depuis le serveur), pour le bouton "Télécharger"
 
-function clearGpxForPeak(name) {
-  const existing = gpxPolylines.get(name);
+export function clearGpxForPeak(id) {
+  const existing = gpxPolylines.get(id);
   if (existing) {
     existing.forEach(line => gpxLayer.removeLayer(line));
-    gpxPolylines.delete(name);
+    gpxPolylines.delete(id);
   }
-  gpxData.delete(name);
-  gpxRawText.delete(name);
+  gpxData.delete(id);
+  gpxRawText.delete(id);
 }
 
 function drawGpxForPeak(p, gpxText) {
   const segments = parseGpxFull(gpxText); // peut lever une exception (propagée à l'appelant)
-  clearGpxForPeak(p.name);
+  clearGpxForPeak(p.id);
   const lines = segments.map(seg => L.polyline(seg.map(pt => [pt.lat, pt.lon]), { color: '#1f5f8b', weight: 3, opacity: 0.85 }));
   lines.forEach(line => {
     line.bindTooltip(escapeHtml(p.name), { sticky: true });
     gpxLayer.addLayer(line);
   });
-  gpxPolylines.set(p.name, lines);
+  gpxPolylines.set(p.id, lines);
   const stats = computeGpxStats(segments);
-  gpxData.set(p.name, stats);
-  gpxRawText.set(p.name, gpxText);
+  gpxData.set(p.id, stats);
+  gpxRawText.set(p.id, gpxText);
   return lines;
 }
 
 function downloadGpx(p) {
-  const text = gpxRawText.get(p.name);
+  const text = gpxRawText.get(p.id);
   if (!text) return;
   if (nativeApp) {
     saveFileNatively(`${p.id}.gpx`, 'application/gpx+xml', text);
@@ -196,7 +196,7 @@ async function deleteGpxTrack(p) {
     return;
   }
   p.gpx = null;
-  clearGpxForPeak(p.name);
+  clearGpxForPeak(p.id);
   refreshGpxRow(p);
 }
 
@@ -208,7 +208,7 @@ function loadRepoGpx(p) {
 }
 
 export function gpxRowHtml(p) {
-  const hasAny = !!p.gpx || gpxPolylines.has(p.name);
+  const hasAny = !!p.gpx || gpxPolylines.has(p.id);
   let body = '';
   if (hasAny) {
     body += `<div class="gpx-status">🧭 Trace affichée sur la carte (calque « Traces GPX »), enregistrée sur le serveur.</div>`;
@@ -226,7 +226,7 @@ export function gpxRowHtml(p) {
 }
 
 function gpxDetailHtml(p) {
-  const d = gpxData.get(p.name);
+  const d = gpxData.get(p.id);
   if (!d) return '<div class="gpx-status">Pas de données disponibles.</div>';
   const rows = [
     ['Distance', d.distanceKm > 0 ? `${d.distanceKm.toFixed(1)} km` : '—'],
@@ -279,7 +279,7 @@ export function bindGpxRow(root, p) {
 }
 
 function refreshGpxRow(p) {
-  if (activePeakName !== p.name) return;
+  if (activePeakId !== p.id) return;
   const root = document.getElementById('peak-panel-body');
   const row = root.querySelector('.gpx-row');
   if (row) {

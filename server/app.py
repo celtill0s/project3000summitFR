@@ -11,14 +11,13 @@ chaque route le rôle minimal requis ; ce qui n'y figure pas est refusé. Rôles
 - member (membre) : son propre espace, en lecture et écriture ;
 - admin           : son espace, la gestion des comptes, et la lecture de l'espace des autres.
 
-Chaque sommet est identifié par son champ "id" (stable) : les données personnelles y sont
-rattachées, pas au nom — renommer un sommet dans le catalogue ne perd donc rien.
-
-Seule dépendance optionnelle : Pillow (+ pillow-heif) pour les miniatures et la conversion
-HEIC → JPEG. Sans elle, les photos originales sont servies telles quelles.
+Organisation :
+- app.py     : serveur HTTP (table des routes, Handler) et démarrage ;
+- auth.py    : comptes, mots de passe, sessions ;
+- storage.py : catalogue et espaces personnels sur disque ;
+- files.py   : pages versionnées, GPX, miniatures, plages d'octets, chemins sûrs ;
+- cli.py     : commandes d'administration (create-admin, set-password, list-users).
 """
-import getpass
-import hashlib
 import json
 import mimetypes
 import os
@@ -28,44 +27,31 @@ import shutil
 import sys
 import threading
 import traceback
-import unicodedata
-import xml.etree.ElementTree as ET
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-try:
-    from . import auth
-except ImportError:  # lancé comme script : python3 server/app.py
-    import auth
+if __name__ == "__main__" and not __package__:
+    # Lancé comme script (python3 server/app.py) : on repasse par le paquet « server » pour que
+    # les imports relatifs ci-dessous fonctionnent.
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from server.app import main
+    sys.exit(main())
 
-try:
-    from PIL import Image, ImageOps
-    try:
-        from pillow_heif import register_heif_opener
-        register_heif_opener()
-    except ImportError:  # pragma: no cover - HEIC simplement non converti
-        pass
-except ImportError:  # pragma: no cover - dépend de l'environnement
-    Image = None
+from . import auth, cli, files, storage
+from .errors import ApiError
+from .files import (IMAGE_EXTS, STATIC_ASSET_EXTS, THUMB_SIZES, VIDEO_EXTS, make_thumbnail, parse_range,
+                    render_page, safe_rel_path, validate_gpx)
+from .storage import (CUSTOM_ID_PREFIX, find_peak, gpx_dir, load_catalog, load_custom_peaks, load_progress,
+                      merged_peaks, photos_dir, save_custom_peaks, save_progress, sessions_store, slugify,
+                      space_catalog, space_stats, thumbs_dir, user_dir, users_store, validate_custom_peak)
 
-ROOT = Path(__file__).resolve().parent.parent
-STATIC_DIR = Path(os.environ.get("STATIC_DIR", ROOT / "static"))
-DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data"))
-CATALOG_PATH = STATIC_DIR / "mountains.json"
-
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif"}
-VIDEO_EXTS = {".mp4", ".webm", ".mov", ".m4v", ".ogv", ".avi", ".mkv"}
 MAX_IMAGE_BYTES = 25 * 1024 * 1024
 MAX_VIDEO_BYTES = 500 * 1024 * 1024
 MAX_GPX_BYTES = 20 * 1024 * 1024
 MAX_JSON_BYTES = 256 * 1024
 CHUNK_BYTES = 1024 * 1024
-# Tailles (plus grand côté, en px) des images redimensionnées servies sous /thumbs/ :
-# 480 pour la grille de miniatures, 1920 pour la visionneuse quand l'original n'est pas
-# affichable partout (HEIC).
-THUMB_SIZES = {480, 1920}
 # Politiques de cache. Code du site et traces GPX : revalidés à chaque chargement (ETag -> 304
 # si inchangé, donc quasi gratuit) — sans ça, un navigateur peut garder l'ancien JS après une
 # mise à jour alors que la page (et sa CSP) sont déjà nouvelles. Photos : nom aléatoire jamais
@@ -74,18 +60,6 @@ THUMB_SIZES = {480, 1920}
 CACHE_REVALIDATE = "no-cache"
 CACHE_IMMUTABLE = "private, max-age=31536000, immutable"
 CACHE_THUMB = "private, max-age=86400"
-
-# URLs versionnées des fichiers du site : les pages (jamais mises en cache) référencent
-# /v/<empreinte>/js/main.js, /v/<empreinte>/style.css… L'empreinte change dès qu'un fichier
-# change, donc chaque mise à jour produit de nouvelles URLs qu'aucun cache (navigateur,
-# Cloudflare…) ne peut servir périmées — y compris les modules importés en relatif par
-# main.js, qui héritent du préfixe. Ces fichiers peuvent alors être cachés longtemps.
-ASSET_PREFIX = "/v/"
-RELATIVE_ASSET_RE = re.compile(r'((?:href|src)=")(?![a-z]+:|/|#)([^"]+)"')
-# Extensions autorisées pour le service de fichiers statiques génériques (style.css, app.js…) —
-# whitelist explicite plutôt que "tout ce qui n'est pas une route API", pour ne jamais exposer
-# par erreur un fichier qui traînerait dans static/ (ex. un .py ou un .bak).
-STATIC_ASSET_EXTS = {".css", ".js", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".webmanifest"}
 
 # Session : cookie inaccessible au JavaScript (HttpOnly), jamais envoyé en clair (Secure), ni
 # joint aux requêtes venant d'un autre site (SameSite=Lax).
@@ -124,202 +98,6 @@ lock = threading.Lock()
 throttle = auth.LoginThrottle()
 
 
-class ApiError(Exception):
-    def __init__(self, status, message, headers=None, extra=None):
-        super().__init__(message)
-        self.status = status
-        self.message = message
-        self.headers = headers or {}
-        self.extra = extra or {}
-
-
-# ---- stockage ----
-
-def users_store() -> auth.UserStore:
-    return auth.UserStore(DATA_DIR / "users.json")
-
-
-def sessions_store() -> auth.SessionStore:
-    return auth.SessionStore(DATA_DIR / "sessions.json")
-
-
-def user_dir(username: str) -> Path:
-    return DATA_DIR / "users" / auth.validate_username(username)
-
-
-def photos_dir(username):
-    return user_dir(username) / "photos"
-
-
-def gpx_dir(username):
-    return user_dir(username) / "gpx"
-
-
-def thumbs_dir(username):
-    return user_dir(username) / "thumbs"
-
-
-def slugify(name: str) -> str:
-    n = unicodedata.normalize("NFD", name.lower())
-    n = "".join(c for c in n if unicodedata.category(c) != "Mn")
-    n = re.sub(r"[^a-z0-9]+", "-", n).strip("-")
-    return n or "sommet"
-
-
-def load_catalog():
-    with open(CATALOG_PATH, encoding="utf-8") as f:
-        return json.load(f)
-
-
-def find_peak(catalog, peak_id):
-    for p in catalog:
-        if p["id"] == peak_id:
-            return p
-    raise ApiError(404, "sommet inconnu")
-
-
-def migrate_progress(progress, catalog):
-    """Rattache à l'id du sommet les entrées de progress.json encore indexées par son nom
-    (format d'avant les ids). Renvoie (progress, changé ?, clés orphelines)."""
-    ids = {p["id"] for p in catalog}
-    id_by_name = {p["name"]: p["id"] for p in catalog}
-    changed = False
-    orphans = []
-    for key in list(progress):
-        if key in ids:
-            continue
-        if key in id_by_name:
-            target = progress.setdefault(id_by_name[key], {})
-            for field, value in progress.pop(key).items():
-                target.setdefault(field, value)
-            changed = True
-        else:
-            orphans.append(key)
-    return progress, changed, orphans
-
-
-def load_progress(username, catalog=None):
-    path = user_dir(username) / "progress.json"
-    if not path.exists():
-        return {}
-    with open(path, encoding="utf-8") as f:
-        progress = json.load(f)
-    return migrate_progress(progress, catalog if catalog is not None else load_catalog())[0]
-
-
-def save_progress(username, data):
-    path = user_dir(username) / "progress.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)  # écriture atomique : jamais de JSON tronqué en cas de crash
-
-
-def merged_peaks(space=None):
-    """Catalogue fusionné avec l'espace d'un utilisateur ; space=None (invité) : catalogue seul,
-    sans aucun champ personnel."""
-    catalog = load_catalog()
-    if space is None:
-        return catalog
-    progress = load_progress(space, catalog)
-    out = []
-    for p in catalog:
-        overlay = progress.get(p["id"], {})
-        merged = dict(p)
-        merged["done"] = bool(overlay.get("done", False))
-        merged["comment"] = overlay.get("comment", "")
-        merged["photos"] = [ph["filename"] for ph in overlay.get("photos", [])]
-        if overlay.get("gpx"):
-            merged["gpx"] = f"/gpx/{space}/{p['id']}.gpx"
-        out.append(merged)
-    return out
-
-
-def space_stats(username):
-    progress = load_progress(username)
-    return {
-        "done": sum(1 for v in progress.values() if v.get("done")),
-        "photos": sum(len(v.get("photos", [])) for v in progress.values()),
-        "gpx": sum(1 for v in progress.values() if v.get("gpx")),
-    }
-
-
-def asset_version() -> str:
-    """Empreinte des fichiers statiques (chemin, taille, date de modification). Recalculée à
-    chaque chargement de page (une vingtaine de stat(), négligeable) : en développement, une
-    modification de fichier change aussitôt l'empreinte, sans redémarrer le serveur."""
-    h = hashlib.sha256()
-    for f in sorted(STATIC_DIR.rglob("*")):
-        if f.is_file() and f.suffix.lower() in STATIC_ASSET_EXTS:
-            st = f.stat()
-            h.update(f"{f.relative_to(STATIC_DIR)}\0{st.st_size}\0{st.st_mtime_ns}\n".encode())
-    return h.hexdigest()[:12]
-
-
-def render_page(name: str) -> bytes:
-    """Page HTML de static/ avec ses références relatives (style.css, js/main.js, vendor/…)
-    réécrites vers le préfixe versionné."""
-    html = (STATIC_DIR / name).read_text(encoding="utf-8")
-    prefix = f"{ASSET_PREFIX}{asset_version()}/"
-    return RELATIVE_ASSET_RE.sub(lambda m: f'{m.group(1)}{prefix}{m.group(2)}"', html).encode("utf-8")
-
-
-def validate_gpx(payload: bytes):
-    # Pas de DTD/entités : un GPX légitime n'en a jamais besoin, et ça écarte d'office les
-    # attaques par expansion d'entités ("billion laughs").
-    if b"<!DOCTYPE" in payload or b"<!ENTITY" in payload:
-        raise ApiError(400, "GPX invalide : DOCTYPE/ENTITY non autorisés")
-    try:
-        root = ET.fromstring(payload)
-    except ET.ParseError:
-        raise ApiError(400, "GPX invalide : XML mal formé")
-    if root.tag.rsplit("}", 1)[-1] != "gpx":
-        raise ApiError(400, "GPX invalide : l'élément racine doit être <gpx>")
-
-
-def parse_range(header, size):
-    """Interprète un en-tête "Range: bytes=..." (une seule plage). Renvoie (début, fin
-    incluse), None si l'en-tête est absent/ignoré, ou lève ApiError(416) si insatisfiable."""
-    m = re.fullmatch(r"bytes=(\d*)-(\d*)", (header or "").strip())
-    if not m or m.group(1) == m.group(2) == "":
-        return None
-    start_s, end_s = m.groups()
-    if start_s == "":  # suffixe : les N derniers octets
-        start, end = max(0, size - int(end_s)), size - 1
-    else:
-        start = int(start_s)
-        end = min(int(end_s), size - 1) if end_s else size - 1
-    if start >= size or start > end:
-        raise ApiError(416, "plage invalide")
-    return start, end
-
-
-def make_thumbnail(src: Path, dest: Path, size: int):
-    """Génère une version JPEG redimensionnée (orientation EXIF appliquée). Écrit dans un
-    fichier temporaire puis renomme : deux requêtes simultanées ne produisent jamais un
-    fichier à moitié écrit."""
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(f".{dest.name}.{secrets.token_hex(4)}.tmp")
-    try:
-        with Image.open(src) as im:
-            im = ImageOps.exif_transpose(im)
-            im.thumbnail((size, size))
-            im.convert("RGB").save(tmp, "JPEG", quality=82, optimize=True)
-        os.replace(tmp, dest)
-    finally:
-        tmp.unlink(missing_ok=True)
-
-
-def safe_rel_path(base: Path, rel: str) -> Path:
-    """Anti path-traversal : ne jamais faire confiance à un chemin fourni par le client."""
-    candidate = (base / rel).resolve()
-    base_resolved = base.resolve()
-    if base_resolved not in candidate.parents and candidate != base_resolved:
-        raise ApiError(400, "chemin invalide")
-    return candidate
-
-
 # ---- table des routes : (méthode, motif, rôle minimal, méthode du Handler) ----
 # PUBLIC = accessible sans connexion. Toute route absente de cette table est refusée (404).
 # Les pages HTML (PAGE) redirigent vers /login au lieu de répondre 401.
@@ -340,6 +118,9 @@ ROUTES = [
     ("GET", rf"/thumbs/(?P<user>{_SEG})/(?P<size>\d+)/(?P<peak>{_SEG})/(?P<file>{_SEG})", "member", "r_thumb"),
     ("GET", rf"/gpx/(?P<user>{_SEG})/(?P<peak>{_SEG})\.gpx", "member", "r_gpx"),
     # Écritures : toujours dans l'espace de l'utilisateur connecté.
+    ("POST", r"/api/peaks", "member", "r_add_custom_peak"),
+    ("POST", rf"/api/peaks/(?P<peak>{_SEG})", "member", "r_update_custom_peak"),
+    ("DELETE", rf"/api/peaks/(?P<peak>{_SEG})", "member", "r_delete_custom_peak"),
     ("POST", rf"/api/peaks/(?P<peak>{_SEG})/done", "member", "r_set_done"),
     ("POST", rf"/api/peaks/(?P<peak>{_SEG})/comment", "member", "r_set_comment"),
     ("POST", rf"/api/peaks/(?P<peak>{_SEG})/photos", "member", "r_add_photo"),
@@ -628,18 +409,21 @@ class Handler(BaseHTTPRequestHandler):
         # fichier actuel (une vieille page en cache obtient donc des fichiers à jour).
         if Path(rel).suffix.lower() not in STATIC_ASSET_EXTS:
             raise ApiError(404, "not found")
-        self._file(safe_rel_path(STATIC_DIR, rel), cache_control=CACHE_IMMUTABLE)
+        self._file(safe_rel_path(storage.STATIC_DIR, rel), cache_control=CACHE_IMMUTABLE)
 
     def r_static(self, rel):
         # URLs non versionnées (sw.js, favicon, pages en cache d'avant le versionnage) : revalidées.
-        self._file(safe_rel_path(STATIC_DIR, rel))
+        self._file(safe_rel_path(storage.STATIC_DIR, rel))
 
     # ---- routes connectées ----
     def r_index(self):
         self._html(render_page("index.html"))
 
     def r_me(self):
-        self._json(200, self.principal)
+        me = dict(self.principal)
+        if me["role"] != "guest":
+            me["storage"] = storage.storage_info(me["username"])
+        self._json(200, me)
 
     def r_change_own_password(self):
         body = self._read_json()
@@ -682,7 +466,7 @@ class Handler(BaseHTTPRequestHandler):
         src = safe_rel_path(photos_dir(user), f"{peak}/{file}")
         if not src.is_file():
             raise ApiError(404, "not found")
-        if Image is None or src.suffix.lower() not in IMAGE_EXTS:
+        if files.Image is None or src.suffix.lower() not in IMAGE_EXTS:
             self._file(src, cache_control=CACHE_THUMB)
             return
         dest = safe_rel_path(thumbs_dir(user), f"{peak}/{size}/{file}.jpg")
@@ -700,84 +484,140 @@ class Handler(BaseHTTPRequestHandler):
         self._file(safe_rel_path(gpx_dir(user), f"{peak}.gpx"))
 
     # ---- écritures (espace de l'utilisateur connecté uniquement) ----
-    def _set_field(self, peak_id, field, value):
+    def _ok_with_storage(self, **extra):
+        """Réponse d'une écriture qui change l'espace occupé : le site met à jour son bandeau."""
+        self._json(200, {"ok": True, **extra, "storage": storage.storage_info(self.principal["username"])})
+
+    def _check_quota(self, incoming_bytes):
+        info = storage.storage_info(self.principal["username"])
+        if info["used"] + incoming_bytes > info["limit"]:
+            raise ApiError(507, f"espace de stockage plein ({info['limit'] // 1024 ** 3} Go maximum par utilisateur) : "
+                                "supprime des photos, vidéos ou traces GPX pour en ajouter", extra={"storage": info})
+
+    def _update_progress(self, peak_id, change):
+        """Applique change(entrée du sommet) à progress.json, sous verrou (sommet vérifié d'abord)."""
         me = self.principal["username"]
         with lock:
-            catalog = load_catalog()
+            catalog = space_catalog(me)
             find_peak(catalog, peak_id)
             progress = load_progress(me, catalog)
-            progress.setdefault(peak_id, {})[field] = value
+            change(progress.setdefault(peak_id, {}))
             save_progress(me, progress)
-        self._json(200, {"ok": True})
 
     def r_set_done(self, peak):
-        self._set_field(peak, "done", bool(self._read_json().get("done")))
+        done = bool(self._read_json().get("done"))
+        self._update_progress(peak, lambda entry: entry.update(done=done))
+        self._json(200, {"ok": True})
 
     def r_set_comment(self, peak):
-        self._set_field(peak, "comment", str(self._read_json().get("comment", ""))[:20000])
+        comment = str(self._read_json().get("comment", ""))[:20000]
+        self._update_progress(peak, lambda entry: entry.update(comment=comment))
+        self._json(200, {"ok": True})
+
+    def r_add_custom_peak(self):
+        me = self.principal["username"]
+        peak = validate_custom_peak(self._read_json())
+        with lock:
+            self._check_unique_name(me, peak["name"])
+            peak = {
+                "id": f"{CUSTOM_ID_PREFIX}{slugify(peak['name'])}-{secrets.token_hex(3)}",
+                **peak,
+                "source": "Ajout manuel",
+                "custom": True,
+            }
+            save_custom_peaks(me, load_custom_peaks(me) + [peak])
+        self._json(200, {**peak, "done": False, "comment": "", "photos": []})
+
+    @staticmethod
+    def _check_unique_name(me, name, except_id=None):
+        if any(p["name"].casefold() == name.casefold() and p["id"] != except_id for p in space_catalog(me)):
+            raise ApiError(409, "un sommet porte déjà ce nom")
+
+    def r_update_custom_peak(self, peak):
+        """Modifie un sommet ajouté à la main ; son id (et donc ses photos, GPX…) ne change pas."""
+        me = self.principal["username"]
+        fields = validate_custom_peak(self._read_json())
+        with lock:
+            custom = load_custom_peaks(me)
+            target = next((p for p in custom if p["id"] == peak), None)
+            if target is None:
+                raise ApiError(404, "sommet inconnu (seuls les sommets ajoutés à la main sont modifiables)")
+            self._check_unique_name(me, fields["name"], except_id=peak)
+            target.update(fields)
+            save_custom_peaks(me, custom)
+        self._json(200, target)
+
+    def r_delete_custom_peak(self, peak):
+        """Supprime un sommet ajouté à la main, avec ses données (photos, GPX, commentaire)."""
+        me = self.principal["username"]
+        with lock:
+            custom = load_custom_peaks(me)
+            if not any(p["id"] == peak for p in custom):
+                raise ApiError(404, "sommet inconnu (seuls les sommets ajoutés à la main sont supprimables)")
+            save_custom_peaks(me, [p for p in custom if p["id"] != peak])
+            progress = load_progress(me, load_catalog())
+            if progress.pop(peak, None) is not None:
+                save_progress(me, progress)
+            shutil.rmtree(safe_rel_path(photos_dir(me), peak), ignore_errors=True)
+            shutil.rmtree(safe_rel_path(thumbs_dir(me), peak), ignore_errors=True)
+            safe_rel_path(gpx_dir(me), f"{peak}.gpx").unlink(missing_ok=True)
+        self._ok_with_storage()
 
     def r_add_photo(self, peak):
         me = self.principal["username"]
-        find_peak(load_catalog(), peak)
+        find_peak(space_catalog(me), peak)
         filename = self.query.get("filename", [""])[0]
         ext = Path(filename).suffix.lower()
         is_video = ext in VIDEO_EXTS
         if not (is_video or ext in IMAGE_EXTS):
             self.close_connection = True
             raise ApiError(400, f"extension non supportée : {ext or '(aucune)'}")
+        max_bytes = MAX_VIDEO_BYTES if is_video else MAX_IMAGE_BYTES
+        self._check_quota(self._content_length(max_bytes))
         safe_name = f"{secrets.token_hex(4)}{ext}"
         # L'écriture (potentiellement longue) se fait hors du verrou ; seule la mise à jour de
         # progress.json, instantanée, est sérialisée.
-        self._stream_body_to(photos_dir(me) / peak / safe_name, MAX_VIDEO_BYTES if is_video else MAX_IMAGE_BYTES)
-        with lock:
-            progress = load_progress(me)
-            progress.setdefault(peak, {}).setdefault("photos", []).append({
-                "filename": safe_name,
-                "type": "video" if is_video else "image",
-            })
-            save_progress(me, progress)
-        self._json(200, {"ok": True, "filename": safe_name, "isVideo": is_video})
+        self._stream_body_to(photos_dir(me) / peak / safe_name, max_bytes)
+        media = {"filename": safe_name, "type": "video" if is_video else "image"}
+        self._update_progress(peak, lambda entry: entry.setdefault("photos", []).append(media))
+        self._ok_with_storage(filename=safe_name, isVideo=is_video)
 
     def r_delete_photo(self, peak, file):
         me = self.principal["username"]
-        with lock:
-            catalog = load_catalog()
-            find_peak(catalog, peak)
-            safe_name = Path(file).name  # anti path-traversal : seul le nom de fichier est gardé
+        safe_name = Path(file).name  # anti path-traversal : seul le nom de fichier est gardé
+
+        def forget(entry):
             (photos_dir(me) / peak / safe_name).unlink(missing_ok=True)
             for size in THUMB_SIZES:
                 (thumbs_dir(me) / peak / str(size) / f"{safe_name}.jpg").unlink(missing_ok=True)
-            progress = load_progress(me, catalog)
-            entry = progress.setdefault(peak, {})
             entry["photos"] = [ph for ph in entry.get("photos", []) if ph["filename"] != safe_name]
-            save_progress(me, progress)
-        self._json(200, {"ok": True})
+        self._update_progress(peak, forget)
+        self._ok_with_storage()
 
     def r_add_gpx(self, peak):
         me = self.principal["username"]
-        find_peak(load_catalog(), peak)
+        find_peak(space_catalog(me), peak)
+        self._check_quota(self._content_length(MAX_GPX_BYTES))
         payload = self._read_body(MAX_GPX_BYTES)
         validate_gpx(payload)
-        with lock:
+
+        def store(entry):
             gpx_dir(me).mkdir(parents=True, exist_ok=True)
             tmp = gpx_dir(me) / f".{peak}.gpx.tmp"
             tmp.write_bytes(payload)
             os.replace(tmp, gpx_dir(me) / f"{peak}.gpx")
-            progress = load_progress(me)
-            progress.setdefault(peak, {})["gpx"] = f"{peak}.gpx"
-            save_progress(me, progress)
-        self._json(200, {"ok": True})
+            entry["gpx"] = f"{peak}.gpx"
+        self._update_progress(peak, store)
+        self._ok_with_storage()
 
     def r_delete_gpx(self, peak):
         me = self.principal["username"]
-        with lock:
-            catalog = load_catalog()
-            find_peak(catalog, peak)
+
+        def forget(entry):
             (gpx_dir(me) / f"{peak}.gpx").unlink(missing_ok=True)
-            progress = load_progress(me, catalog)
-            progress.setdefault(peak, {}).pop("gpx", None)
-            save_progress(me, progress)
-        self._json(200, {"ok": True})
+            entry.pop("gpx", None)
+        self._update_progress(peak, forget)
+        self._ok_with_storage()
 
     # ---- administration des comptes ----
     def _existing_user(self, user):
@@ -829,108 +669,21 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True})
 
 
-# ---- migration des données d'avant les comptes (un seul espace, à la racine de data/) ----
-
-LEGACY_ITEMS = ("progress.json", "photos", "gpx", "thumbs")
-
-
-def _non_empty(path: Path) -> bool:
-    return path.is_file() or (path.is_dir() and any(path.iterdir()))
-
-
-def legacy_data_present() -> bool:
-    return any(_non_empty(DATA_DIR / name) for name in LEGACY_ITEMS)
-
-
-def migrate_legacy_to(username: str) -> list:
-    """Déplace data/progress.json, photos/, gpx/, thumbs/ dans data/users/<username>/.
-    Renvoie la liste des éléments déplacés ; ne remplace jamais un élément existant."""
-    dest = user_dir(username)
-    dest.mkdir(parents=True, exist_ok=True)
-    moved = []
-    for name in LEGACY_ITEMS:
-        src = DATA_DIR / name
-        if not _non_empty(src):
-            continue
-        if _non_empty(dest / name):
-            raise RuntimeError(f"{dest / name} existe déjà : migration interrompue, rien n'est écrasé")
-        if (dest / name).is_dir():
-            (dest / name).rmdir()
-        os.replace(src, dest / name)
-        moved.append(name)
-    if (dest / "progress.json").exists():
-        # progress.json d'avant les ids (indexé par nom de sommet) : converti au passage.
-        save_progress(username, load_progress(username))
-    return moved
-
-
-def _prompt_password(label="Mot de passe") -> str:
-    while True:
-        pw = getpass.getpass(f"{label} ({auth.MIN_PASSWORD_LENGTH} caractères minimum) : ")
-        try:
-            auth.validate_password(pw)
-        except ValueError as e:
-            print(f"  {e}")
-            continue
-        if getpass.getpass("Confirmation : ") == pw:
-            return pw
-        print("  les deux saisies diffèrent, recommence")
-
-
-def cli(argv) -> int:
-    """Commandes d'administration, à lancer sur le serveur :
-      python3 server/app.py create-admin <identifiant>   crée un compte admin (et y rattache les
-                                                         données d'avant les comptes, s'il y en a)
-      python3 server/app.py set-password <identifiant>   réinitialise un mot de passe (secours)
-      python3 server/app.py list-users
-    (avec Docker : docker compose exec app python3 server/app.py …)"""
-    if not argv or argv[0] not in ("create-admin", "set-password", "list-users"):
-        print(cli.__doc__)
-        return 2
-    store = users_store()
-    try:
-        if argv[0] == "list-users":
-            for u, d in sorted(store.all().items()):
-                print(f"{u:32s} {d['role']}")
-            return 0
-        if len(argv) != 2:
-            print(cli.__doc__)
-            return 2
-        username = auth.validate_username(argv[1].strip().lower())
-        if argv[0] == "create-admin":
-            store.create(username, _prompt_password(), "admin")
-            print(f"✓ compte administrateur « {username} » créé")
-            if legacy_data_present():
-                moved = migrate_legacy_to(username)
-                print(f"✓ données existantes rattachées à « {username} » : {', '.join(moved)}")
-        else:
-            if not store.get(username):
-                print(f"utilisateur « {username} » inconnu")
-                return 1
-            store.set_password(username, _prompt_password("Nouveau mot de passe"))
-            sessions_store().revoke_user(username)
-            print(f"✓ mot de passe de « {username} » changé (ses sessions ouvertes sont fermées)")
-        return 0
-    except (ValueError, RuntimeError) as e:
-        print(f"erreur : {e}")
-        return 1
-
-
 def main():
     if len(sys.argv) > 1:
-        sys.exit(cli(sys.argv[1:]))
+        sys.exit(cli.cli(sys.argv[1:]))
     port = int(os.environ.get("PORT", 8000))
-    (DATA_DIR / "users").mkdir(parents=True, exist_ok=True)
-    if Image is None:
+    (storage.DATA_DIR / "users").mkdir(parents=True, exist_ok=True)
+    if files.Image is None:
         print("Pillow absent : pas de miniatures, les photos originales sont servies telles quelles")
     if users_store().count() == 0:
         print("⚠️  Aucun compte : personne ne peut se connecter. Crée le premier administrateur :\n"
               "     docker compose exec app python3 server/app.py create-admin <identifiant>\n"
               "   (sans Docker : python3 server/app.py create-admin <identifiant>)")
-        if legacy_data_present():
+        if cli.legacy_data_present():
             print("   Les données existantes (progress.json, photos, gpx) lui seront rattachées.")
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
-    print(f"project3000summitFR backend listening on :{port} (data={DATA_DIR})")
+    print(f"project3000summitFR backend listening on :{port} (data={storage.DATA_DIR})")
     server.serve_forever()
 
 

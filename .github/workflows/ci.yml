@@ -25,6 +25,8 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-dev.txt
       - run: pip install -r requirements-dev.txt
+      # Navigateur des tests du frontend (tests/test_frontend.py).
+      - run: python -m playwright install --with-deps chromium
       # Inclut tests/test_catalog.py : toute modification de static/mountains.json est validée.
       - run: pytest -q
 

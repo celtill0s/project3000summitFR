@@ -650,6 +650,13 @@ html, body { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystem
   color: #6b5210;
 }
 #space-banner a { color: var(--accent); font-weight: 600; }
+/* Quota (js/storage.js) : la page devient une colonne bandeau + appli, la carte garde le reste. */
+#storage-banner {
+  padding: 10px 18px; background: #b3261e; color: #fff; font-size: 13.5px; font-weight: 600; line-height: 1.4;
+}
+#storage-banner[hidden] { display: none; }
+body.has-storage-banner { display: flex; flex-direction: column; }
+body.has-storage-banner #app { flex: 1; min-height: 0; height: auto; }
 /* Invité (pas d'espace personnel) : rien de ce qu'un utilisateur ajoute n'est affiché. */
 body.no-space .personal-only,
 body.no-space .done-check,
@@ -658,6 +665,7 @@ body.no-space .pop-comment-row,
 body.no-space .photos-row,
 body.no-space .gpx-row { display: none !important; }
 /* Lecture seule (admin consultant l'espace d'un autre) : pas de boutons de modification. */
+body.readonly .editable-only,
 body.readonly .photos-add,
 body.readonly .photo-del,
 body.readonly .gpx-import,
@@ -686,6 +694,34 @@ body.readonly .done-check:disabled, body.readonly .pop-done-checkbox:disabled { 
   font: inherit; font-size: 15px; font-weight: 400; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: #fff;
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Ajout manuel d'un sommet (js/custom-peak.js) */
+#custom-peak-dialog .modal-box { max-height: calc(100vh - 32px); overflow-y: auto; box-sizing: border-box; }
+.modal-box select, .modal-box textarea {
+  font: inherit; font-size: 15px; font-weight: 400; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: #fff; resize: vertical;
+}
+.modal-hint { margin: -6px 0 0; font-size: 12px; color: var(--muted); }
+.cp-coords { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cp-coords input { min-width: 0; }
+#placement-bar {
+  position: absolute; z-index: 1100; left: 50%; top: 12px; transform: translateX(-50%);
+  width: min(400px, calc(100% - 24px)); box-sizing: border-box;
+  background: var(--panel); border-radius: 10px; padding: 12px 14px; box-shadow: 0 6px 20px rgba(0,0,0,.3);
+  display: flex; flex-direction: column; gap: 8px; font-size: 13px;
+}
+#placement-bar[hidden] { display: none; }
+.placing-icon { position: relative; width: 72px; height: 72px; cursor: move; }
+.placing-peak { position: absolute; left: 20px; top: 20px; width: 32px; height: 32px; filter: drop-shadow(0 1px 3px rgba(0,0,0,.5)); }
+.placing-arrow { position: absolute; font-size: 13px; line-height: 1; color: #1b3a2c; text-shadow: 0 0 3px #fff, 0 0 3px #fff; animation: placing-pulse 1.2s ease-in-out infinite; }
+.placing-arrow.up { top: 2px; left: 30px; --dx: 0; --dy: -3px; }
+.placing-arrow.down { bottom: 2px; left: 30px; --dx: 0; --dy: 3px; }
+.placing-arrow.left { left: 2px; top: 29px; --dx: -3px; --dy: 0; }
+.placing-arrow.right { right: 2px; top: 29px; --dx: 3px; --dy: 0; }
+@keyframes placing-pulse { 50% { transform: translate(var(--dx), var(--dy)); } }
+#peak-panel-body .pop-links { margin: 6px 0 0; padding-left: 18px; font-size: 12px; word-break: break-all; }
+#peak-panel-body .pop-custom-tag { font-size: 10px; font-weight: 600; color: #fff; background: #6b5210; border-radius: 4px; padding: 1px 5px; vertical-align: middle; }
+#peak-panel-body .pop-custom-actions { margin-top: 10px; display: flex; gap: 8px; }
+#peak-panel-body .pop-custom-actions button { flex: 1; }
 
 /* Vue « Utilisateurs » (admin) : même principe que la vue crampons */
 #admin-view { position: fixed; inset: 0; z-index: 6000; background: var(--bg); display: flex; flex-direction: column; overflow: hidden; }

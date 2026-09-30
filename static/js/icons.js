@@ -3,7 +3,7 @@ import { startsMobile } from './config.js';
 
 // Silhouette "montagne" (deux pointes) réutilisée pour les marqueurs individuels ET les
 // bulles de cluster, dans un viewBox 24x24.
-const MOUNTAIN_PATH = 'M2 20 L9 8 L13 14 L16 9 L22 20 Z';
+export const MOUNTAIN_PATH = 'M2 20 L9 8 L13 14 L16 9 L22 20 Z';
 
 // Marqueur individuel : logo montagne colorié selon la difficulté (T2/T3/T4), coche verte en
 // haut à gauche si le sommet est fait, altitude en petit en bas à droite du logo.

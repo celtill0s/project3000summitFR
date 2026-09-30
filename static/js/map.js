@@ -163,15 +163,38 @@ const layersControl = L.control.layers(baseLayers, {
   'Pentes &gt; 30° (IGN)': slopesLayer
 }, { collapsed: startsMobile, position: startsMobile ? 'topleft' : 'topright' }).addTo(map);
 
-export const markers = new Map(); // name -> {marker, data}
+export const markers = new Map(); // id -> {marker, data}
 
 export function buildMarkers() {
-  PEAKS.forEach(p => {
-    const color = DIFF_COLORS[p.difficulty] || '#555';
-    const marker = L.marker([p.lat, p.lon], { icon: makeIcon(color, doneSet.has(p.name), p.altitude_m) });
-    marker.on('click', () => openPeakPanel(p, marker));
-    markers.set(p.name, { marker, data: p });
-  });
+  PEAKS.forEach(addPeakMarker);
+}
+
+function peakIcon(p) {
+  return makeIcon(DIFF_COLORS[p.difficulty] || '#555', doneSet.has(p.id), p.altitude_m);
+}
+
+export function addPeakMarker(p) {
+  const marker = L.marker([p.lat, p.lon], { icon: peakIcon(p) });
+  marker.on('click', () => openPeakPanel(p, marker));
+  markers.set(p.id, { marker, data: p });
+  return marker;
+}
+
+// Après un changement de statut, de cotation, d'altitude ou de position.
+export function refreshPeakMarker(p) {
+  const entry = markers.get(p.id);
+  if (!entry) return;
+  entry.marker.setIcon(peakIcon(p));
+  entry.marker.setLatLng([p.lat, p.lon]);
+  if (peaksCluster.hasLayer(entry.marker)) peaksCluster.refreshClusters(entry.marker);
+}
+
+export function removePeakMarker(p) {
+  const entry = markers.get(p.id);
+  if (!entry) return;
+  peaksCluster.removeLayer(entry.marker);
+  individualLayer.removeLayer(entry.marker);
+  markers.delete(p.id);
 }
 
 export function syncMarkers() {

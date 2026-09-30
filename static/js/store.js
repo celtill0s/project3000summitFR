@@ -9,7 +9,7 @@ export const PEAKS = [];
 // - canEdit   : modifications autorisées (faux pour un invité, ou un admin qui consulte l'espace
 //               d'un autre) — le serveur applique de toute façon les mêmes règles.
 export const session = { me: null, space: null, canEdit: false, viewingOther: false };
-export const doneSet = new Set();
+export const doneSet = new Set(); // ids des sommets faits
 
 export const state = {
   regions: new Set(REGIONS),
@@ -21,8 +21,8 @@ export const state = {
 export function passesBaseFilter(p) {
   if (!state.regions.has(p.region)) return false;
   if (!state.difficulties.has(p.difficulty)) return false;
-  if (state.status === 'Fait' && !doneSet.has(p.name)) return false;
-  if (state.status === 'À faire' && doneSet.has(p.name)) return false;
+  if (state.status === 'Fait' && !doneSet.has(p.id)) return false;
+  if (state.status === 'À faire' && doneSet.has(p.id)) return false;
   if (state.query) {
     const q = state.query.toLowerCase();
     if (!(p.name.toLowerCase().includes(q) || p.massif.toLowerCase().includes(q))) return false;

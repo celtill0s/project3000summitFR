@@ -1,13 +1,13 @@
 // Panneau flottant de détail d'un sommet (fait, commentaire, médias, GPX).
 import { escapeHtml, safeUrl } from './util.js';
 import { DIFF_COLORS, DIFF_CRITERIA } from './config.js';
-import { doneSet, session } from './store.js';
-import { apiPost, peakApiBase } from './api.js';
-import { makeIcon } from './icons.js';
-import { map, markers } from './map.js';
+import { doneSet, session, PEAKS } from './store.js';
+import { apiDelete, apiPost, peakApiBase } from './api.js';
+import { map, refreshPeakMarker, removePeakMarker } from './map.js';
 import { bindPhotosRow, photosRowHtml } from './photos.js';
-import { bindGpxRow, gpxRowHtml } from './gpx.js';
-import { renderList, updateDoneCount } from './sidebar.js';
+import { bindGpxRow, clearGpxForPeak, gpxRowHtml } from './gpx.js';
+import { renderList } from './sidebar.js';
+import { openPeakDialog } from './custom-peak.js';
 
 // Zone de commentaire : hauteur qui suit le contenu (dans la limite COMMENT_EXPANDED_MAX),
 // repliée à COMMENT_COLLAPSED_MAX avec un "Voir plus" tant que le texte n'a pas été déplié.
@@ -28,17 +28,22 @@ function autosizeCommentTextarea(el, expanded) {
 // (panneau flottant déplaçable) et non plus dans une popup Leaflet.
 function popupHtml(p) {
   const color = DIFF_COLORS[p.difficulty] || '#555';
-  const checked = doneSet.has(p.name) ? 'checked' : '';
+  const checked = doneSet.has(p.id) ? 'checked' : '';
   const name = escapeHtml(p.name);
   const diff = escapeHtml(p.difficulty);
   const notes = escapeHtml(p.notes);
   const source = escapeHtml(p.source);
   const sourceUrl = safeUrl(p.source_url);
+  const links = (p.links || []).map(safeUrl).filter(Boolean);
+  const linksHtml = links.length
+    ? `<ul class="pop-links">${links.map(u => `<li><a href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer">${escapeHtml(u)}</a></li>`).join('')}</ul>`
+    : '';
   return `
-    <h3>${name}</h3>
-    <div class="pop-meta">${escapeHtml(p.altitude_m)} m &middot; ${escapeHtml(p.massif)} &middot; ${escapeHtml(p.region)} &middot; <a href="https://www.google.com/maps?q=${Number(p.lat)},${Number(p.lon)}" target="_blank" rel="noopener noreferrer">Voir sur Google Maps</a></div>
+    <h3>${name}${p.custom ? ' <span class="pop-custom-tag">ajout perso</span>' : ''}</h3>
+    <div class="pop-meta">${escapeHtml(p.altitude_m)} m &middot; ${p.massif ? `${escapeHtml(p.massif)} &middot; ` : ''}${escapeHtml(p.region)} &middot; <a href="https://www.google.com/maps?q=${Number(p.lat)},${Number(p.lon)}" target="_blank" rel="noopener noreferrer">Voir sur Google Maps</a></div>
     <span class="badge" style="background:${color}">${diff}</span>
     <div class="pop-notes">${notes}</div>
+    ${linksHtml}
     <div class="pop-source">Source : ${source}</div>
     <button type="button" class="cotation-detail-toggle">Détail de la cotation ${diff}</button>
     <div class="cotation-detail-body">
@@ -46,7 +51,7 @@ function popupHtml(p) {
       <div class="why"><strong>Pourquoi ce sommet est coté ${diff}</strong> : ${notes}</div>
       <div class="source-link">Source : ${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${source}</a>` : source}. Voir <code>sources.md</code> dans le dépôt pour la méthodologie complète.</div>
     </div>
-    <label class="pop-done-row"><input type="checkbox" class="pop-done-checkbox" data-name="${name}" ${checked} ${session.canEdit ? '' : 'disabled'}/> Sommet fait</label>
+    <label class="pop-done-row"><input type="checkbox" class="pop-done-checkbox" ${checked} ${session.canEdit ? '' : 'disabled'}/> Sommet fait</label>
     <div class="pop-comment-row">
       <label>${session.viewingOther ? `Commentaire de ${escapeHtml(session.space)}` : 'Mon commentaire'}</label>
       <textarea class="pop-comment-input" placeholder="Notes perso : conditions, ressenti, conseils…" ${session.canEdit ? '' : 'readonly'}>${escapeHtml(p.comment || '')}</textarea>
@@ -55,30 +60,31 @@ function popupHtml(p) {
     </div>
     ${photosRowHtml(p)}
     ${gpxRowHtml(p)}
+    ${p.custom && session.canEdit ? `<div class="pop-custom-actions">
+      <button type="button" class="btn-secondary pop-custom-edit">Modifier ce sommet</button>
+      <button type="button" class="btn-danger pop-custom-delete">Supprimer ce sommet</button>
+    </div>` : ''}
   `;
+}
+
+function setDone(p, done) {
+  if (done) doneSet.add(p.id); else doneSet.delete(p.id);
+  refreshPeakMarker(p);
+  renderList();
 }
 
 export function toggleDone(p) {
   if (!session.canEdit) return; // invité, ou admin consultant l'espace d'un autre
-  const name = p.name;
-  const wasDone = doneSet.has(name);
-  if (wasDone) doneSet.delete(name); else doneSet.add(name);
-  const entry = markers.get(name);
-  if (entry) entry.marker.setIcon(makeIcon(DIFF_COLORS[entry.data.difficulty] || '#555', doneSet.has(name), entry.data.altitude_m));
-  renderList();
-  updateDoneCount();
+  const wasDone = doneSet.has(p.id);
+  setDone(p, !wasDone);
   apiPost(`${peakApiBase(p)}/done`, { done: !wasDone }).catch(() => {
-    // échec réseau : on annule l'affichage optimiste
-    if (wasDone) doneSet.add(name); else doneSet.delete(name);
-    if (entry) entry.marker.setIcon(makeIcon(DIFF_COLORS[entry.data.difficulty] || '#555', doneSet.has(name), entry.data.altitude_m));
-    renderList();
-    updateDoneCount();
+    setDone(p, wasDone); // échec réseau : on annule l'affichage optimiste
     alert("Impossible d'enregistrer sur le serveur — vérifie la connexion et réessaie.");
   });
 }
 
 // --- Panneau flottant de détail d'un sommet (remplace la popup Leaflet ancrée au marqueur) ---
-export let activePeakName = null;
+export let activePeakId = null;
 
 function bindPanelContent(root, p) {
   const doneEl = root.querySelector('.pop-done-checkbox');
@@ -95,6 +101,7 @@ function bindPanelContent(root, p) {
   const commentToggleEl = root.querySelector('.pop-comment-toggle');
   if (commentEl) {
     let saveTimer = null;
+    let lastSaved = commentEl.value.trim();
     let commentExpanded = false;
     const refreshCommentUI = () => {
       const overflowsCollapsed = autosizeCommentTextarea(commentEl, commentExpanded);
@@ -103,31 +110,29 @@ function bindPanelContent(root, p) {
         commentToggleEl.textContent = commentExpanded ? 'Voir moins' : 'Voir plus';
       }
     };
+    const saveComment = () => {
+      clearTimeout(saveTimer);
+      const text = commentEl.value.trim();
+      if (text === lastSaved) return;
+      lastSaved = text;
+      p.comment = text;
+      apiPost(`${peakApiBase(p)}/comment`, { comment: text })
+        .then(() => { if (commentStatusEl) commentStatusEl.textContent = 'Enregistré sur le serveur.'; })
+        .catch((err) => { if (commentStatusEl) commentStatusEl.textContent = `Échec de l'enregistrement (${err.message}).`; });
+    };
     refreshCommentUI();
     commentEl.addEventListener('input', () => {
       if (!session.canEdit) return;
       if (commentStatusEl) commentStatusEl.textContent = '';
       refreshCommentUI();
       clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => {
-        const text = commentEl.value.trim();
-        p.comment = text;
-        apiPost(`${peakApiBase(p)}/comment`, { comment: text })
-          .then(() => { if (commentStatusEl) commentStatusEl.textContent = 'Enregistré sur le serveur.'; })
-          .catch((err) => { if (commentStatusEl) commentStatusEl.textContent = `Échec de l'enregistrement (${err.message}).`; });
-      }, 500);
+      saveTimer = setTimeout(saveComment, 500);
     });
     commentEl.addEventListener('focus', () => {
       if (!commentExpanded) { commentExpanded = true; refreshCommentUI(); }
     });
     commentEl.addEventListener('blur', () => {
-      if (!session.canEdit) return;
-      clearTimeout(saveTimer);
-      const text = commentEl.value.trim();
-      p.comment = text;
-      apiPost(`${peakApiBase(p)}/comment`, { comment: text })
-        .then(() => { if (commentStatusEl) commentStatusEl.textContent = 'Enregistré sur le serveur.'; })
-        .catch((err) => { if (commentStatusEl) commentStatusEl.textContent = `Échec de l'enregistrement (${err.message}).`; });
+      if (session.canEdit) saveComment();
     });
     if (commentToggleEl) {
       commentToggleEl.addEventListener('click', () => {
@@ -138,6 +143,27 @@ function bindPanelContent(root, p) {
   }
   bindPhotosRow(root, p);
   bindGpxRow(root, p);
+  const deleteBtn = root.querySelector('.pop-custom-delete');
+  if (deleteBtn) deleteBtn.addEventListener('click', () => deleteCustomPeak(p));
+  const editBtn = root.querySelector('.pop-custom-edit');
+  if (editBtn) editBtn.addEventListener('click', () => { closePeakPanel(); openPeakDialog(p); });
+}
+
+async function deleteCustomPeak(p) {
+  if (!confirm(`Supprimer « ${p.name} » ainsi que ses photos, trace GPX et commentaire ?`)) return;
+  try {
+    await apiDelete(peakApiBase(p));
+  } catch (err) {
+    alert(`Suppression impossible (${err.message}).`);
+    return;
+  }
+  removePeakMarker(p);
+  clearGpxForPeak(p.id);
+  const idx = PEAKS.indexOf(p);
+  if (idx >= 0) PEAKS.splice(idx, 1);
+  doneSet.delete(p.id);
+  closePeakPanel();
+  renderList();
 }
 
 // Recadre une valeur (position + taille) pour qu'elle tienne toujours entre `margin` et
@@ -179,10 +205,10 @@ function clampOpenPanelToMap() {
 export function openPeakPanel(p, marker) {
   const panel = document.getElementById('peak-panel');
   const body = document.getElementById('peak-panel-body');
-  if (activePeakName === p.name && !panel.hidden) return; // déjà affiché : ne pas régénérer (édition en cours)
+  if (activePeakId === p.id && !panel.hidden) return; // déjà affiché : ne pas régénérer (édition en cours)
   const wasHidden = panel.hidden;
   body.innerHTML = popupHtml(p);
-  activePeakName = p.name;
+  activePeakId = p.id;
   bindPanelContent(body, p);
   panel.hidden = false;
   if (wasHidden) positionPanelNear(marker);
@@ -190,7 +216,7 @@ export function openPeakPanel(p, marker) {
 
 function closePeakPanel() {
   document.getElementById('peak-panel').hidden = true;
-  activePeakName = null;
+  activePeakId = null;
 }
 
 export function initPeakPanel() {

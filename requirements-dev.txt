@@ -1,2 +1,5 @@
 -r requirements.txt
 pytest>=8
+# Tests du frontend dans un vrai navigateur (tests/test_frontend.py) ; il faut aussi une fois :
+#   python -m playwright install chromium
+playwright>=1.48

@@ -3,7 +3,7 @@
 import globals from "globals";
 
 export default [
-  { ignores: ["static/vendor/**"] }, // bibliothèques tierces copiées telles quelles
+  { ignores: ["static/vendor/**", ".venv/**"] }, // bibliothèques tierces copiées telles quelles
   {
     files: ["static/js/**/*.js"],
     languageOptions: {

@@ -2,6 +2,7 @@
 import { isHeicFile, isVideoFile } from './util.js';
 import { CSRF_HEADERS } from './session-utils.js';
 import { session } from './store.js';
+import { updateStorage } from './storage.js';
 
 // --- Appels au backend : toute écriture (coché, commentaire, photos/vidéos, gpx) part
 // directement vers le serveur, qui la persiste sur son propre disque (data/). Plus de
@@ -11,14 +12,25 @@ import { session } from './store.js';
 export const peakApiBase = p => `/api/peaks/${encodeURIComponent(p.id)}`;
 
 // Réponse 401 : session expirée ou révoquée (déconnexion ailleurs, mot de passe changé…) →
-// retour à la page de connexion.
+// retour à la page de connexion. L'espace occupé, joint par le serveur à chaque écriture de
+// fichier (et au refus 507 « espace plein »), met à jour le bandeau de quota.
 async function checked(res) {
   if (res.status === 401) {
     location.replace('/login');
     throw new Error('session expirée');
   }
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || ('HTTP ' + res.status));
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    updateStorage(body.storage, res.status === 507);
+    throw new Error(body.error || ('HTTP ' + res.status));
+  }
   return res;
+}
+
+async function jsonOf(res) {
+  const data = await res.json().catch(() => ({}));
+  updateStorage(data.storage);
+  return data;
 }
 
 export async function apiGet(url) {
@@ -26,29 +38,26 @@ export async function apiGet(url) {
 }
 
 export async function apiPost(url, body) {
-  const res = await checked(await fetch(url, {
+  return jsonOf(await checked(await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...CSRF_HEADERS },
     body: JSON.stringify(body)
-  }));
-  return res.json().catch(() => ({}));
+  })));
 }
 
 export async function apiDelete(url) {
-  const res = await checked(await fetch(url, { method: 'DELETE', headers: CSRF_HEADERS }));
-  return res.json().catch(() => ({}));
+  return jsonOf(await checked(await fetch(url, { method: 'DELETE', headers: CSRF_HEADERS })));
 }
 
 // Envoi du fichier brut (pas de multipart) : le serveur l'écrit sur disque au fil de l'eau,
 // sans jamais le charger entièrement en mémoire. Le nom d'origine ne sert qu'à l'extension.
 export async function apiUpload(url, file) {
   const sep = url.includes('?') ? '&' : '?';
-  const res = await checked(await fetch(`${url}${sep}filename=${encodeURIComponent(file.name)}`, {
+  return jsonOf(await checked(await fetch(`${url}${sep}filename=${encodeURIComponent(file.name)}`, {
     method: 'POST',
     headers: { 'Content-Type': file.type || 'application/octet-stream', ...CSRF_HEADERS },
     body: file
-  }));
-  return res.json();
+  })));
 }
 
 // URLs d'un média : original, miniature (grille) et version affichable dans la visionneuse

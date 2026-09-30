@@ -77,7 +77,7 @@ export function renderList() {
   const groupDoneFirst = state.status === 'Tous';
   const filtered = PEAKS.filter(passesBaseFilter).sort((a, b) => {
     if (groupDoneFirst) {
-      const doneDiff = (doneSet.has(b.name) ? 1 : 0) - (doneSet.has(a.name) ? 1 : 0);
+      const doneDiff = (doneSet.has(b.id) ? 1 : 0) - (doneSet.has(a.id) ? 1 : 0);
       if (doneDiff !== 0) return doneDiff;
     }
     return b.altitude_m - a.altitude_m;
@@ -86,7 +86,7 @@ export function renderList() {
 
   filtered.forEach(p => {
     const item = document.createElement('div');
-    const done = doneSet.has(p.name);
+    const done = doneSet.has(p.id);
     item.className = 'peak-item' + (done ? ' is-done' : '');
     const color = DIFF_COLORS[p.difficulty];
     item.innerHTML = `
@@ -104,7 +104,7 @@ export function renderList() {
       toggleDone(p);
     });
     item.addEventListener('click', () => {
-      const m = markers.get(p.name);
+      const m = markers.get(p.id);
       closeMobileList(); // sur mobile, sélectionner un sommet referme la liste plein écran
       map.flyTo([p.lat, p.lon], 12, { duration: 0.6 });
       // Attend la fin de l'animation pour positionner correctement le panneau à sa première ouverture

@@ -16,12 +16,15 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<!-- Espace de stockage plein ou presque (js/storage.js) -->
+<div id="storage-banner" role="alert" hidden></div>
 <div id="app">
   <div id="sidebar">
     <header>
       <h1>Sommets de plus de 3000 m</h1>
       <div class="subtitle">Alpes françaises &amp; Pyrénées &mdash; accessibles à pied, sans matériel d'alpinisme (pas de glacier obligatoire, pas de corde, pas de via ferrata). Cotation randonnée CAS/SAC indicative (T2 à T4).</div>
       <button type="button" id="crampon-view-open" class="crampon-view-open-btn">❄️ Vue crampons/piolet (POC)</button>
+      <button type="button" id="custom-peak-open" class="crampon-view-open-btn personal-only editable-only">➕ Ajouter un sommet</button>
       <!-- Compte connecté (js/account.js) -->
       <div id="account-bar" hidden>
         <span id="account-name"></span>
@@ -62,6 +65,15 @@
       </div>
       <div id="peak-panel-body"></div>
     </div>
+    <!-- Placement d'un sommet ajouté à la main (js/custom-peak.js) -->
+    <div id="placement-bar" hidden>
+      <div>Placez « <strong id="placement-name"></strong> » : faites glisser le marqueur (ou cliquez sur la carte) puis validez.</div>
+      <div class="modal-status" id="placement-status"></div>
+      <div class="modal-actions">
+        <button type="button" id="placement-cancel" class="btn-secondary">Annuler</button>
+        <button type="button" id="placement-confirm" class="btn-primary">Valider l'emplacement</button>
+      </div>
+    </div>
   </div>
   <button type="button" id="mobile-list-toggle">📋 Liste</button>
 </div>
@@ -90,6 +102,37 @@
     <div class="modal-actions">
       <button type="button" id="pw-cancel" class="btn-secondary">Annuler</button>
       <button type="submit" class="btn-primary">Enregistrer</button>
+    </div>
+  </form>
+</div>
+
+<!-- Ajout manuel d'un sommet, visible uniquement dans son propre espace (js/custom-peak.js) -->
+<div id="custom-peak-dialog" class="modal" hidden>
+  <form id="custom-peak-form" class="modal-box">
+    <h2 id="custom-peak-title">Ajouter un sommet</h2>
+    <p class="modal-hint">Visible uniquement dans votre espace.</p>
+    <label>Nom<input id="cp-name" maxlength="100" required></label>
+    <label>Altitude (m)<input id="cp-altitude" type="number" min="0" max="9000" step="1" required></label>
+    <label>Difficulté<select id="cp-difficulty" required>
+      <option value="T2">T2 · Randonnée montagne</option>
+      <option value="T3" selected>T3 · Randonnée exigeante</option>
+      <option value="T4">T4 · Randonnée alpine</option>
+    </select></label>
+    <label>Région<select id="cp-region" required>
+      <option value="Alpes">Alpes</option>
+      <option value="Pyrénées">Pyrénées</option>
+    </select></label>
+    <label>Massif (facultatif)<input id="cp-massif" maxlength="100"></label>
+    <div class="cp-coords">
+      <label>Latitude (facultatif)<input id="cp-lat" type="number" min="-90" max="90" step="any" placeholder="45.1234"></label>
+      <label>Longitude (facultatif)<input id="cp-lon" type="number" min="-180" max="180" step="any" placeholder="6.1234"></label>
+    </div>
+    <label>Commentaires (facultatif)<textarea id="cp-notes" maxlength="5000" rows="3"></textarea></label>
+    <label>Liens externes (facultatif, un par ligne)<textarea id="cp-links" rows="2" placeholder="https://www.camptocamp.org/…"></textarea></label>
+    <div class="modal-status" id="cp-status"></div>
+    <div class="modal-actions">
+      <button type="button" id="cp-cancel" class="btn-secondary">Annuler</button>
+      <button type="submit" class="btn-primary">Placer sur la carte</button>
     </div>
   </form>
 </div>
