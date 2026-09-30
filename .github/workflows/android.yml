@@ -1,10 +1,10 @@
 name: Android
 
-# Vérifie que l'appli Android compile, à chaque modification de android/ sur main ou devel (build de debug, sans
+# Vérifie que l'appli Android compile, à chaque modification de android/ sur main (build de debug, sans
 # clé de signature). La construction des releases est dans release.yml.
 on:
   push:
-    branches: [main, devel]
+    branches: [main]
     paths: ["android/**", ".github/workflows/android.yml"]
   pull_request:
     paths: ["android/**", ".github/workflows/android.yml"]

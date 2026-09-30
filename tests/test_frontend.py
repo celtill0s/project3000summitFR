@@ -142,6 +142,8 @@ def test_done_and_comment_are_saved(open_page):
     open_peak(page, peak["name"])
     expect(page.locator("#peak-panel .pop-done-checkbox")).to_be_checked()
     expect(page.locator("#peak-panel .pop-comment-input")).to_have_value("Belle course")
+    # Hauteur mesurée panneau visible (sinon zone écrasée à 0 px à la première ouverture).
+    assert page.locator("#peak-panel .pop-comment-input").bounding_box()["height"] > 20
 
 
 def test_add_edit_and_delete_custom_peak(open_page):

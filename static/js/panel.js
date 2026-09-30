@@ -209,8 +209,8 @@ export function openPeakPanel(p, marker) {
   const wasHidden = panel.hidden;
   body.innerHTML = popupHtml(p);
   activePeakId = p.id;
+  panel.hidden = false; // avant bindPanelContent : la zone de commentaire mesure sa hauteur
   bindPanelContent(body, p);
-  panel.hidden = false;
   if (wasHidden) positionPanelNear(marker);
 }
 

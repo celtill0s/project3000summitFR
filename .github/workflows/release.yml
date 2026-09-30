@@ -1,8 +1,9 @@
 name: Release APK
 
-# Pousser un tag construit l'appli Android, la signe et l'attache à une Release GitHub :
-# - vX.Y.Z-beta.N (sur devel) → pré-version, pour tester avant de fusionner dans main ;
-# - vX.Y.Z (sur main)         → version finale.
+# Pousser un tag construit l'appli Android, la signe et l'attache à une Release GitHub, à
+# condition que le commit tagué soit sur main :
+# - vX.Y.Z-beta.N → pré-version, pour tester sur le téléphone ;
+# - vX.Y.Z        → version finale.
 # Configuration (clé de signature, secrets) : android/README.md.
 on:
   push:
@@ -16,6 +17,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0 # historique complet : nécessaire pour savoir sur quelle branche est le tag
+      - name: Tag posé sur main
+        run: |
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then exit 0; fi
+          echo "::error::Le tag « $GITHUB_REF_NAME » n'est pas sur main : aucun APK publié. Pousse d'abord le commit sur main, puis tague-le."
+          exit 1
       - name: Version depuis le tag
         run: |
           V="${GITHUB_REF_NAME#v}"

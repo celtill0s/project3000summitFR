@@ -1,35 +1,94 @@
-# project3000summitFR
+<div align="center">
 
-Carte interactive (Leaflet + fonds OpenStreetMap) des sommets de plus de
-3000 m des **Alpes françaises** et des **Pyrénées françaises** accessibles
-à pied, sans matériel d'alpinisme (pas de glacier obligatoire, pas de
-corde, pas de via ferrata).
+<img src="static/icons/icon-192.png" width="96" alt="">
 
-## Aperçu
+# Sommets de plus de 3000 m
 
-![Vue générale de la carte](screenshots/01-vue-generale.png)
+**Tous les sommets de plus de 3000 m des Alpes et des Pyrénées françaises accessibles à pied —
+sans glacier obligatoire, sans corde, sans via ferrata — sur une carte, avec ton carnet de
+courses personnel.**
 
-## Architecture
+[![CI](https://github.com/celtill0s/project3000summitFR/actions/workflows/ci.yml/badge.svg)](https://github.com/celtill0s/project3000summitFR/actions/workflows/ci.yml)
+[![Release APK](https://img.shields.io/github/v/release/celtill0s/project3000summitFR?include_prereleases&label=APK%20Android&color=1b3a2c)](https://github.com/celtill0s/project3000summitFR/releases)
+![Python](https://img.shields.io/badge/Python-3.13%2B-3776ab?logo=python&logoColor=white)
+![Leaflet](https://img.shields.io/badge/Leaflet-1.9-199900?logo=leaflet&logoColor=white)
+![Auto-hébergeable](https://img.shields.io/badge/auto--h%C3%A9bergeable-Docker%20%C2%B7%20Raspberry%20Pi-2496ed?logo=docker&logoColor=white)
 
-Le projet est composé de deux parties :
+[Aperçu](#-aperçu) · [Démarrage rapide](#-démarrage-rapide) · [Auto-hébergement](#-auto-hébergement-sur-son-propre-serveur) · [Fonctionnalités](#-fonctionnalités) · [Catalogue](#-modifier-le-catalogue) · [Appli Android](android/README.md)
 
-- **`static/`** — le frontend (carte Leaflet, `index.html`, page de
-  connexion `login.html`) et le **catalogue public** des sommets
-  (`static/mountains.json` : nom, altitude, coordonnées, cotation, notes,
-  source — versionné dans ce dépôt, partagé avec tout le monde).
-- **`server/`** — un petit backend Python (bibliothèque standard
-  uniquement ; Pillow en option pour les miniatures, voir plus bas) :
-  `app.py` sert le site et fusionne le catalogue avec l'**espace personnel**
-  de l'utilisateur connecté (sommets faits, commentaires, photos/vidéos,
-  traces GPX) ; `auth.py` gère les comptes et les sessions. Tout est stocké
-  dans `data/` — **jamais dans ce dépôt** (voir `.gitignore`).
+<img src="screenshots/01-vue-generale.png" alt="Vue générale : la carte des sommets regroupés par secteur et la liste triée par altitude">
 
-Ce découpage permet à n'importe qui de cloner ce dépôt pour héberger sa
-propre instance (avec le même catalogue de sommets, ou le sien), sans
-jamais récupérer les données personnelles de quelqu'un d'autre — chaque
-instance garde les siennes localement, hors git.
+</div>
 
-## Comptes et rôles
+## 📸 Aperçu
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="screenshots/02-fiche-sommet.png" alt="Fiche d'un sommet sur le Plan IGN">
+      <p align="center"><b>Fiche de chaque sommet</b><br>cotation CAS/SAC détaillée, source, sommet fait, commentaire, photos/vidéos, trace GPX — sur fond Plan IGN</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="screenshots/03-ajout-sommet.gif" alt="Ajout d'un sommet personnel : formulaire, placement à la souris, validation">
+      <p align="center"><b>Tes propres sommets</b><br>formulaire, puis placement en faisant glisser le marqueur, et validation — visibles de toi seul</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="screenshots/05-mobile.png" alt="Version mobile : carte plein écran et liste">
+      <p align="center"><b>Sur téléphone</b><br>carte plein écran, liste à la demande ; installable (PWA) ou en <a href="android/README.md">appli Android</a>, utilisable hors-ligne</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="screenshots/04-crampons.png" alt="Vue crampons et piolet">
+      <p align="center"><b>Vue crampons/piolet</b><br>les sommets faisables hors saison avec crampons et piolet, grade alpin confirmé sur camptocamp</p>
+    </td>
+  </tr>
+</table>
+
+## 🚀 Démarrage rapide
+
+Juste Python 3, sans Docker ni dépendance :
+
+```bash
+git clone https://github.com/celtill0s/project3000summitFR.git && cd project3000summitFR
+python3 server/app.py create-admin moi   # une fois : crée ton compte
+python3 server/app.py                    # puis ouvre http://localhost:8000
+```
+
+Les données sont stockées dans `data/` (créé automatiquement, jamais commité). Pour un vrai
+serveur, voir [Auto-hébergement](#-auto-hébergement-sur-son-propre-serveur).
+
+## 🧭 Architecture
+
+```mermaid
+flowchart LR
+    subgraph Navigateur["📱 Navigateur · PWA · appli Android"]
+        UI["static/ — carte Leaflet,<br>modules ES natifs"]
+    end
+    subgraph Serveur["🐍 server/ — Python, bibliothèque standard"]
+        APP["app.py<br>routes + droits"] --> AUTH["auth.py<br>comptes, sessions"]
+        APP --> STORE["storage.py<br>catalogue + espaces"]
+        APP --> FILES["files.py<br>GPX, miniatures"]
+    end
+    CAT[("static/mountains.json<br>catalogue public, dans git")]
+    DATA[("data/<br>comptes, espaces perso<br>jamais dans git")]
+    UI <-->|HTTPS · cookie de session| APP
+    STORE --> CAT
+    STORE --> DATA
+```
+
+- **`static/`** — le frontend (carte Leaflet, `index.html`, page de connexion `login.html`) et le
+  **catalogue public** des sommets (`static/mountains.json` : nom, altitude, coordonnées,
+  cotation, notes, source — versionné dans ce dépôt, partagé avec tout le monde).
+- **`server/`** — un petit backend Python (bibliothèque standard uniquement ; Pillow en option
+  pour les miniatures) qui sert le site et fusionne le catalogue avec l'**espace personnel** de
+  l'utilisateur connecté (sommets faits, commentaires, photos/vidéos, traces GPX, sommets
+  ajoutés). Tout est stocké dans `data/` — **jamais dans ce dépôt** (voir `.gitignore`).
+
+N'importe qui peut donc cloner ce dépôt pour héberger sa propre instance (avec le même
+catalogue, ou le sien), sans jamais récupérer les données personnelles de quelqu'un d'autre.
+
+## 👥 Comptes et rôles
 
 Tout le site est derrière une **page de connexion** (aucun accès sans
 compte). Trois rôles :
@@ -76,19 +135,7 @@ docker compose exec app python3 server/app.py list-users
 (sans Docker : `python3 server/app.py …`). Le mot de passe est demandé au
 clavier.
 
-## Utiliser en local (développement / test rapide)
-
-Sans Docker, avec juste Python 3 :
-
-```bash
-python3 server/app.py create-admin moi   # une fois : crée ton compte
-python3 server/app.py
-```
-
-puis ouvrir <http://localhost:8000> et se connecter. Les données sont
-stockées dans `data/` (créé automatiquement à côté du dépôt).
-
-## Auto-hébergement sur son propre serveur
+## 🐳 Auto-hébergement sur son propre serveur
 
 Le projet fournit un `Dockerfile` + `docker-compose.yml` (appli + Caddy
 en reverse proxy) prêts à l'emploi. Prérequis : Docker et Docker Compose
@@ -145,6 +192,9 @@ cd project3000summitFR
 
 ### Mise à jour d'une instance d'avant les comptes
 
+<details>
+<summary>Instances installées avant l'arrivée des comptes (Basic Auth de Caddy, dossier <code>secrets/</code>)</summary>
+
 Les versions précédentes protégeaient le site par la Basic Auth de Caddy
 (fichiers `secrets/`), avec un seul espace de données. Après `./update.sh` :
 
@@ -171,6 +221,8 @@ Les versions précédentes protégeaient le site par la Basic Auth de Caddy
 
 Conseil : fais une sauvegarde de `data/` avant (`scripts/backup.sh`).
 
+</details>
+
 ### Sauvegarde
 
 Tout ce qui compte pour ton instance (progression, commentaires,
@@ -192,7 +244,10 @@ Exemple de crontab (tous les jours à 3 h) :
 d'une suppression accidentelle, pas d'une panne matérielle. Copie
 `BACKUP_ROOT` ailleurs pour ça.
 
-## Contenu
+## 📁 Organisation du dépôt
+
+<details>
+<summary>Ce que contient chaque dossier</summary>
 
 - **`static/index.html`** — la carte : panneau latéral (recherche,
   filtres par massif/difficulté/statut, liste triée par altitude, faits
@@ -222,12 +277,14 @@ d'une suppression accidentelle, pas d'une panne matérielle. Copie
   `photos/<id>/`, `gpx/<id>.gpx`, `thumbs/` (miniatures, régénérables :
   inutile de les sauvegarder).
 - **`android/`** — l'appli Android (voir `android/README.md`), construite et
-  publiée par `.github/workflows/release.yml` à chaque tag `vX.Y.Z`.
+  publiée par `.github/workflows/release.yml` à chaque tag `vX.Y.Z` posé sur `main`.
 - **`sources.md`** — méthodologie complète : comment chaque sommet a été
   sélectionné, comment sa cotation a été déterminée, sources utilisées et
   limites connues (inclut l'audit critique du 2026-09-01).
 
-## Fonctionnalités
+</details>
+
+## ✨ Fonctionnalités
 
 - **Calques par difficulté** : chaque niveau de cotation (T2, T3, T4) est
   un calque Leaflet indépendant, à afficher/masquer via le contrôle en
@@ -280,7 +337,7 @@ d'une suppression accidentelle, pas d'une panne matérielle. Copie
 - **Vue crampons/piolet** : sommets faisables hors saison avec crampons
   et piolet (champ `crampon` du catalogue).
 
-## Modifier le catalogue
+## 📝 Modifier le catalogue
 
 Éditer `static/mountains.json` directement (tableau JSON, un objet par
 sommet). Chaque entrée suit ce schéma :
@@ -316,17 +373,29 @@ tirets.
 `pytest` valide automatiquement le catalogue (champs, cotations,
 coordonnées, unicité des ids) — lancé aussi par la CI à chaque push.
 
-Tests : `pip install -r requirements-dev.txt`, une fois
-`python -m playwright install chromium`, puis `pytest`. Ils couvrent le
-serveur (`tests/test_server_app.py`), le catalogue (`tests/test_catalog.py`)
-et le site dans un vrai navigateur (`tests/test_frontend.py` : connexion,
-filtres, sommet fait, commentaire, ajout/modification/suppression d'un
-sommet, bandeau d'espace plein, consultation admin). Sans Chromium, ces
-derniers sont simplement ignorés.
-
 (Les champs `done`, `comment`, `photos`, `gpx` ne font **pas** partie du
 catalogue : ce sont des données personnelles, propres à chaque utilisateur
 et gérées par le serveur dans `data/users/<identifiant>/progress.json`.)
 
 Voir `sources.md` pour le barème de cotation et les sources de référence à
 utiliser pour toute nouvelle entrée.
+
+## 🧪 Développement et tests
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m playwright install chromium   # une fois : navigateur des tests du site
+.venv/bin/python -m pytest -q                      # serveur, catalogue et site dans un vrai navigateur
+```
+
+| Fichier | Ce qui est testé |
+|---|---|
+| `tests/test_server_app.py` | routes, droits de chaque rôle sur chaque route, comptes, sessions, uploads, quota, sommets perso |
+| `tests/test_catalog.py` | le catalogue `static/mountains.json` (champs, cotations, coordonnées, ids uniques) |
+| `tests/test_frontend.py` | le site dans Chromium : connexion, filtres, sommet fait, commentaire, ajout/modification/suppression d'un sommet, bandeau d'espace plein, consultation admin (ignorés si Chromium est absent) |
+
+La CI (GitHub Actions) lance tout ça à chaque push, plus le lint du JavaScript (ESLint), la
+construction de l'image Docker et celle de l'APK.
+
+Pour essayer sans toucher à tes données : `DATA_DIR=/tmp/essai PORT=8765 python3 server/app.py`
+(après un `create-admin` avec le même `DATA_DIR`).

@@ -36,12 +36,13 @@ l'ancienne, sans perdre la connexion.
 ## Publier une release
 
 Pousser un tag déclenche `.github/workflows/release.yml`, qui construit l'APK, le signe et
-l'attache à une Release GitHub. Il faut d'abord, **une seule fois**, créer la clé de signature
-et la confier à GitHub (étapes 1 et 2).
+l'attache à une Release GitHub — **seulement si le commit tagué est sur `main`** ; sinon le
+workflow s'arrête avec une erreur explicite. Il faut d'abord, **une seule fois**, créer la clé
+de signature et la confier à GitHub (étapes 1 et 2).
 
-Circuit : on développe sur la branche **`devel`**, on publie une **bêta** depuis `devel` pour
-tester sur le téléphone, puis on fusionne dans **`main`** — ce que le serveur déploie
-(`update.sh`) — et on publie la **version finale** depuis `main`.
+Circuit : tout se passe sur **`main`**. On pousse ses changements, on publie une **bêta**
+(tag `vX.Y.Z-beta.N`) pour tester sur le téléphone, puis la **version finale** (tag `vX.Y.Z`)
+quand elle convient. Le serveur, lui, se met à jour avec `update.sh`.
 
 ### 1. Créer la clé de signature (une fois pour toutes)
 
@@ -76,10 +77,10 @@ sur l'écran de connexion. Sans elle, le champ est vide et l'adresse se saisit u
 l'APK publié dans les Releases est public, et une adresse préremplie y est lisible par qui le
 télécharge. Aucune adresse d'instance n'est écrite dans le code du dépôt.
 
-### 3. Publier une bêta (depuis `devel`)
+### 3. Publier une bêta
 
 ```bash
-git switch devel
+git switch main && git pull
 git tag v1.0.0-beta.1
 git push origin v1.0.0-beta.1
 ```
@@ -87,18 +88,15 @@ git push origin v1.0.0-beta.1
 Quelques minutes plus tard, une Release marquée **pré-version** apparaît avec l'APK. Bêtas
 suivantes : `v1.0.0-beta.2`, `-beta.3`… (jusqu'à 98).
 
-> L'APK n'est qu'une coquille : la carte vient du serveur, donc de `main`. Une bêta testée
-> contre le serveur de production valide la partie native (connexion, hors-ligne, GPS,
-> photos, déconnexion…), mais les ajouts côté site pour l'appli (`static/js/app-bridge.js` :
-> bouton retour, enregistrement des GPX) n'y sont actifs qu'une fois fusionnés dans `main` et
-> déployés.
+> L'APK n'est qu'une coquille : la carte vient du serveur. Une bêta valide la partie native
+> (connexion, hors-ligne, GPS, photos, déconnexion…) ; les ajouts côté site pour l'appli
+> (`static/js/app-bridge.js` : bouton retour, enregistrement des GPX) n'y sont actifs qu'une
+> fois le serveur mis à jour (`update.sh`).
 
-### 4. Publier la version finale (depuis `main`)
+### 4. Publier la version finale
 
 ```bash
-git switch main
-git merge devel
-git push origin main          # puis ./update.sh sur le serveur
+git switch main && git pull
 git tag v1.0.0
 git push origin v1.0.0
 ```
