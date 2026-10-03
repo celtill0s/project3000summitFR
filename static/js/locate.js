@@ -1,5 +1,5 @@
 // Bouton « me localiser » : position GPS en direct sur la carte (point bleu + cercle de précision).
-import { map } from './map.js';
+import { map, visibleCenter } from './map.js';
 
 let watching = false;
 let centeredOnce = false;
@@ -46,7 +46,8 @@ function onLocationFound(e) {
   // Recentre une seule fois : ensuite l'utilisateur doit pouvoir explorer la carte librement.
   if (!centeredOnce) {
     centeredOnce = true;
-    map.setView(e.latlng, Math.max(map.getZoom(), 14));
+    const zoom = Math.max(map.getZoom(), 14);
+    map.setView(visibleCenter(e.latlng, zoom), zoom);
   }
 }
 
@@ -64,7 +65,7 @@ function onLocationError(e) {
 
 function position() {
   // Même coin que le zoom (voir applyResponsiveControlPositions dans map.js).
-  return window.matchMedia('(max-width: 760px)').matches ? 'bottomleft' : 'topleft';
+  return window.matchMedia('(max-width: 760px)').matches ? 'bottomleft' : 'topright';
 }
 
 export function initLocateControl() {

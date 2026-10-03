@@ -169,9 +169,17 @@ async function deleteCustomPeak(p) {
 // Recadre une valeur (position + taille) pour qu'elle tienne toujours entre `margin` et
 // `containerSize - margin` — utilisé pour garantir qu'aucun coin du panneau ne sorte jamais
 // de la zone carte, quels que soient la position du marqueur ou la taille du panneau.
-function clampIntoRange(value, size, containerSize, margin) {
-  const maxVal = Math.max(margin, containerSize - size - margin);
-  return Math.min(Math.max(margin, value), maxVal);
+function clampIntoRange(value, size, containerSize, margin, start = 0) {
+  const minVal = start + margin;
+  const maxVal = Math.max(minVal, containerSize - size - margin);
+  return Math.min(Math.max(minVal, value), maxVal);
+}
+
+// Bord gauche utilisable : sur ordinateur, la liste (verre dépoli) recouvre le côté gauche de la
+// carte, le panneau ne doit pas s'ouvrir ni se déplacer dessous.
+function leftInset() {
+  const sidebar = document.getElementById('sidebar');
+  return !sidebar || window.matchMedia('(max-width: 760px)').matches ? 0 : sidebar.offsetWidth;
 }
 
 // Positionne le panneau près du marqueur cliqué, toujours entièrement dans la zone carte —
@@ -186,7 +194,7 @@ function positionPanelNear(marker) {
   const w = panel.offsetWidth, h = panel.offsetHeight;
   // Position "naturelle" (au-dessus, légèrement à droite du marqueur), puis recadrage
   // inconditionnel sur les deux axes : aucune branche ne doit pouvoir sauter ce recadrage.
-  const left = clampIntoRange(pt.x + 18, w, mapW, margin);
+  const left = clampIntoRange(pt.x + 18, w, mapW, margin, leftInset());
   const top = clampIntoRange(pt.y - h - 12, h, mapH, margin);
   panel.style.left = left + 'px';
   panel.style.top = top + 'px';
@@ -199,7 +207,7 @@ function clampOpenPanelToMap() {
   if (!panel || panel.hidden) return;
   const mapEl = document.getElementById('map');
   const margin = 8;
-  panel.style.left = clampIntoRange(panel.offsetLeft, panel.offsetWidth, mapEl.clientWidth, margin) + 'px';
+  panel.style.left = clampIntoRange(panel.offsetLeft, panel.offsetWidth, mapEl.clientWidth, margin, leftInset()) + 'px';
   panel.style.top = clampIntoRange(panel.offsetTop, panel.offsetHeight, mapEl.clientHeight, margin) + 'px';
 }
 export function openPeakPanel(p, marker) {
@@ -255,9 +263,10 @@ export function initPeakPanel() {
     e.stopPropagation();
     const dx = e.clientX - drag.startX;
     const dy = e.clientY - drag.startY;
-    const maxLeft = Math.max(0, drag.mapW - panel.offsetWidth);
+    const minLeft = leftInset();
+    const maxLeft = Math.max(minLeft, drag.mapW - panel.offsetWidth);
     const maxTop = Math.max(0, drag.mapH - panel.offsetHeight);
-    panel.style.left = Math.min(Math.max(0, drag.startLeft + dx), maxLeft) + 'px';
+    panel.style.left = Math.min(Math.max(minLeft, drag.startLeft + dx), maxLeft) + 'px';
     panel.style.top = Math.min(Math.max(0, drag.startTop + dy), maxTop) + 'px';
   });
   const endDrag = (e) => { drag = null; header.classList.remove('dragging'); if (e) e.stopPropagation(); };

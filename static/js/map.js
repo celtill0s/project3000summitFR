@@ -1,17 +1,46 @@
 // Carte Leaflet : fond, clusters, calques, contrôles, légende, marqueurs.
-import { DIFF_COLORS, DIFF_LABELS, DIFFS, startsMobile } from './config.js';
+import { DIFF_COLORS, DIFF_LABELS, DIFFS } from './config.js';
 import { PEAKS, doneSet, passesBaseFilter } from './store.js';
 import { clusterIcon, makeIcon } from './icons.js';
 import { openPeakPanel } from './panel.js';
 
-// Repositionne juste le zoom (le calque, lui, garde sa position fixée à la création — voir
-// startsMobile — puisque Leaflet fige son mode replié/déplié à la construction du contrôle).
+// Contrôles de la carte : à droite sur ordinateur (la liste occupe tout le côté gauche), sous la
+// barre d'outils ➕ ⛏ ⚙ ; sur mobile, en bas à gauche (la liste s'y ouvre en plein écran).
 export function applyResponsiveControlPositions() {
   const mobile = window.matchMedia('(max-width: 760px)').matches;
-  map.zoomControl.setPosition(mobile ? 'bottomleft' : 'topleft');
+  map.zoomControl.setPosition(mobile ? 'bottomleft' : 'topright');
+  separateAllControl.setPosition(mobile ? 'bottomleft' : 'topright');
+  legend.setPosition(mobile ? 'topleft' : 'bottomright');
+  if (mobile) {
+    // Sur mobile, l'œil (voir tous / regrouper) se place juste au-dessus du bouton « me
+    // localiser » (js/locate.js), dans la colonne du bas à gauche.
+    const corner = map.getContainer().querySelector('.leaflet-bottom.leaflet-left');
+    const locate = corner?.querySelector('.locate-control');
+    if (locate) corner.insertBefore(separateAllControl.getContainer(), locate);
+  }
 }
 
-export const map = L.map('map', { zoomControl: true }).setView([44.8, 4.0], 6);
+export const map = L.map('map', { zoomControl: true });
+
+// Sur ordinateur, la liste (verre dépoli) recouvre la gauche de la carte : la zone vraiment
+// visible est décalée vers la droite d'une demi-largeur de liste. Les recentrages en tiennent
+// compte pour que le point visé tombe au milieu de ce qu'on voit, pas sous la liste.
+function hiddenLeftWidth() {
+  const sidebar = document.getElementById('sidebar');
+  return !sidebar || window.matchMedia('(max-width: 760px)').matches ? 0 : sidebar.offsetWidth;
+}
+
+export function visibleCenter(latlng, zoom) {
+  const shift = hiddenLeftWidth() / 2;
+  if (!shift) return L.latLng(latlng);
+  return map.unproject(map.project(latlng, zoom).subtract([shift, 0]), zoom);
+}
+
+export function flyToVisible(latlng, zoom, options) {
+  map.flyTo(visibleCenter(latlng, zoom), zoom, options);
+}
+
+map.setView(visibleCenter([44.8, 4.0], 6), 6);
 
 // --- Fonds de carte ---
 // IGN : flux WMTS public de la Géoplateforme (data.geopf.fr), gratuit et sans clé. Le SCAN 25
@@ -63,24 +92,36 @@ const DEFAULT_BASE_LAYER = 'Auto (OSM, puis IGN en zoomant)';
 // jusqu'au zoom 17, agrandie au-delà.
 const slopesLayer = ignLayer('GEOGRAPHICALGRIDSYSTEMS.SLOPES.MOUNTAIN', 'image/png', {
   maxNativeZoom: 17,
-  opacity: 0.55
+  opacity: 0.55,
+  zIndex: 10 // toujours au-dessus du fond, même après un changement de fond
 });
 
-// Le fond choisi est mémorisé dans le navigateur (simple confort : sans stockage disponible,
-// on retombe sur le fond par défaut).
+// Fond et calques choisis dans le panneau ⚙ (js/settings.js), mémorisés dans le navigateur
+// (simple confort : sans stockage disponible, on retombe sur les valeurs par défaut).
 const BASE_LAYER_KEY = 'summitfr.baseLayer';
-function savedBaseLayerName() {
-  try {
-    const name = localStorage.getItem(BASE_LAYER_KEY);
-    return name in baseLayers ? name : DEFAULT_BASE_LAYER;
-  } catch {
-    return DEFAULT_BASE_LAYER;
-  }
+const OVERLAYS_KEY = 'summitfr.overlays';
+function readSetting(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
 }
-baseLayers[savedBaseLayerName()].addTo(map);
-map.on('baselayerchange', (e) => {
-  try { localStorage.setItem(BASE_LAYER_KEY, e.name); } catch { /* stockage indisponible */ }
-});
+function writeSetting(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* stockage indisponible */ }
+}
+
+export const BASE_LAYER_NAMES = Object.keys(baseLayers);
+let currentBaseLayer = baseLayers[readSetting(BASE_LAYER_KEY)] ? readSetting(BASE_LAYER_KEY) : DEFAULT_BASE_LAYER;
+baseLayers[currentBaseLayer].addTo(map);
+
+export function getBaseLayer() {
+  return currentBaseLayer;
+}
+
+export function setBaseLayer(name) {
+  if (!baseLayers[name] || name === currentBaseLayer) return;
+  map.removeLayer(baseLayers[currentBaseLayer]);
+  baseLayers[name].addTo(map);
+  currentBaseLayer = name;
+  writeSetting(BASE_LAYER_KEY, name);
+}
 
 // Groupe de clustering unique (toutes difficultés mélangées) : au dézoom, les sommets proches
 // se regroupent sous un seul logo montagne avec le nombre total de sommets du secteur ; au
@@ -97,7 +138,22 @@ const peaksCluster = L.markerClusterGroup({
 }).addTo(map);
 
 // Calque dédié aux traces GPX importées (itinéraires de rando par sommet).
-export const gpxLayer = L.layerGroup().addTo(map);
+export const gpxLayer = L.layerGroup();
+
+// Surcouches activables dans le panneau ⚙ : traces GPX (affichées par défaut), pentes > 30°.
+const overlays = { gpx: gpxLayer, slopes: slopesLayer };
+const overlayState = { gpx: true, slopes: false, ...JSON.parse(readSetting(OVERLAYS_KEY) || '{}') };
+
+export function isOverlayVisible(name) {
+  return !!overlayState[name];
+}
+
+export function setOverlayVisible(name, visible) {
+  overlayState[name] = visible;
+  if (visible) overlays[name].addTo(map); else map.removeLayer(overlays[name]);
+  writeSetting(OVERLAYS_KEY, JSON.stringify(overlayState));
+}
+Object.keys(overlays).forEach(name => { if (overlayState[name]) overlays[name].addTo(map); });
 
 // Bouton "Voir tous" : bascule tous les sommets actuellement affichés vers leur VRAIE position
 // individuelle (plus aucun regroupement), sans toucher au zoom/à la vue en cours. Groupé par
@@ -134,12 +190,19 @@ function toggleSeparateAllPeaks() {
 }
 
 let separateAllBtnEl = null;
+// Icône d'œil : ouvert = « voir tous les sommets » (regroupés pour l'instant), barré =
+// « regrouper » (tous affichés pour l'instant). L'icône montre ce que fait le clic.
+const EYE_OPEN = '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" />';
+const EYE_CLOSED = '<path d="M9.9 4.2A10 10 0 0 1 12 4c6.4 0 10 8 10 8a17 17 0 0 1-2.2 3.2M6.6 6.6A17 17 0 0 0 2 12s3.6 8 10 8a9.6 9.6 0 0 0 5.4-1.6" /><path d="M14.1 14.1a3 3 0 1 1-4.2-4.2" /><path d="m2 2 20 20" />';
 function updateSeparateAllButton() {
   if (!separateAllBtnEl) return;
-  separateAllBtnEl.textContent = allSeparated ? '✕ Regrouper' : '⇲ Voir tous';
-  separateAllBtnEl.title = allSeparated
-    ? 'Réafficher les regroupements par zone'
-    : 'Afficher tous les sommets individuellement, à leur position réelle';
+  const label = allSeparated
+    ? 'Regrouper les sommets par zone'
+    : 'Voir tous les sommets, à leur position réelle';
+  separateAllBtnEl.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${allSeparated ? EYE_CLOSED : EYE_OPEN}</svg>`;
+  separateAllBtnEl.title = label;
+  separateAllBtnEl.setAttribute('aria-label', label);
+  separateAllBtnEl.classList.toggle('active', allSeparated);
 }
 
 const separateAllControl = L.control({ position: 'topleft' });
@@ -147,6 +210,7 @@ separateAllControl.onAdd = function () {
   const div = L.DomUtil.create('div', 'leaflet-bar separate-all-control');
   const btn = L.DomUtil.create('a', '', div);
   btn.href = '#';
+  btn.setAttribute('role', 'button');
   separateAllBtnEl = btn;
   updateSeparateAllButton();
   L.DomEvent.disableClickPropagation(div);
@@ -157,11 +221,6 @@ separateAllControl.addTo(map);
 
 // Échelle métrique (km/m), en bas à gauche.
 L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
-
-const layersControl = L.control.layers(baseLayers, {
-  '<span style="color:#1f5f8b">&#9473;</span> Traces GPX': gpxLayer,
-  'Pentes &gt; 30° (IGN)': slopesLayer
-}, { collapsed: startsMobile, position: startsMobile ? 'topleft' : 'topright' }).addTo(map);
 
 export const markers = new Map(); // id -> {marker, data}
 
@@ -209,15 +268,18 @@ export function syncMarkers() {
   });
 }
 
-// Légende (rappel des couleurs). Sur desktop : boîte fixe en bas à droite, comme avant. Sur
-// mobile : masquée en tant que contrôle séparé (une seule flèche voulue, pas deux) — son
-// contenu est plutôt fusionné dans le panneau du sélecteur de calques (voir
-// setupMobileLayersPanel), qui ouvre/ferme les deux à la fois.
+// Légende (rappel des couleurs), repliée par défaut : juste « Cotation randonnée ▾ » ; un clic
+// déplie le détail T2/T3/T4. En bas à droite sur ordinateur, en haut à gauche sur mobile (le
+// bouton « Liste » occupe le bas à droite).
 function legendContentHtml() {
   return `
-    <div class="legend-title">Cotation randonnée</div>
-    ${DIFFS.map(d => `<div class="legend-row"><span class="legend-dot" style="background:${DIFF_COLORS[d]}"></span>${DIFF_LABELS[d]}</div>`).join('')}
-    <div class="legend-row" style="margin-top:6px;"><span style="color:#1b3a2c">&#10003;</span>&nbsp;Sommet fait</div>
+    <button type="button" class="legend-toggle" aria-expanded="false" aria-controls="legend-body">
+      <span class="legend-title">Cotation randonnée</span><span class="legend-arrow" aria-hidden="true">▾</span>
+    </button>
+    <div class="legend-body" id="legend-body" hidden>
+      ${DIFFS.map(d => `<div class="legend-row"><span class="legend-dot" style="background:${DIFF_COLORS[d]}"></span>${DIFF_LABELS[d]}</div>`).join('')}
+      <div class="legend-row" style="margin-top:6px;"><span style="color:#1b3a2c">&#10003;</span>&nbsp;Sommet fait</div>
+    </div>
   `;
 }
 
@@ -226,41 +288,14 @@ legend.onAdd = function () {
   const div = L.DomUtil.create('div', '');
   div.id = 'legend';
   div.innerHTML = legendContentHtml();
+  const toggle = div.querySelector('.legend-toggle');
+  const body = div.querySelector('.legend-body');
+  toggle.addEventListener('click', () => {
+    body.hidden = !body.hidden;
+    toggle.setAttribute('aria-expanded', String(!body.hidden));
+    div.classList.toggle('open', !body.hidden);
+  });
   L.DomEvent.disableClickPropagation(div);
   return div;
 };
 legend.addTo(map);
-
-// Une seule flèche sur mobile (celle du sélecteur de calques) : on y ajoute la légende + un
-// vrai bouton "fermer" visible (Leaflet masque son propre bouton une fois le panneau ouvert,
-// sans offrir de moyen de le refermer autrement qu'en tapant ailleurs sur la carte).
-export function setupMobileLayersPanel() {
-  if (!startsMobile) return;
-  const container = layersControl.getContainer();
-  if (!container) return;
-
-  // Pas d'ouverture/fermeture au « survol » sur écran tactile : un tap émule mouseenter (le
-  // panneau s'ouvre), puis l'ouverture change la mise en page sous le doigt et le navigateur
-  // émet aussitôt mouseleave — Leaflet refermait le panneau 2 ms après l'avoir ouvert. On ne
-  // garde que les gestes explicites : tap sur la flèche, bouton ✕, tap sur la carte.
-  // (_expandSafely : méthode interne de Leaflet 1.9.4, version figée dans static/vendor/.)
-  L.DomEvent.off(container, { mouseenter: layersControl._expandSafely, mouseleave: layersControl.collapse }, layersControl);
-
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'leaflet-control-layers-close';
-  closeBtn.setAttribute('aria-label', 'Fermer');
-  closeBtn.textContent = '✕';
-  closeBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    layersControl.collapse();
-  });
-  container.insertBefore(closeBtn, container.firstChild);
-
-  const list = container.querySelector('.leaflet-control-layers-list') || container;
-  const legendBlock = document.createElement('div');
-  legendBlock.className = 'legend-in-layers';
-  legendBlock.innerHTML = legendContentHtml();
-  list.appendChild(legendBlock);
-}

@@ -112,7 +112,10 @@ def test_guest_has_no_personal_controls(open_page):
     page = open_page("gus")
     expect(page.locator(".peak-item")).to_have_count(len(CATALOG))
     expect(page.locator("#custom-peak-open")).to_be_hidden()
-    expect(page.locator("#status-chips")).to_be_hidden()
+    page.click("#settings-open")
+    expect(page.locator("#region-chips")).to_be_visible()
+    expect(page.locator("#status-chips")).to_be_hidden()  # pas d'espace personnel : pas de statut
+    page.click("#settings-close")
     open_peak(page, CATALOG[0]["name"])
     expect(page.locator("#peak-panel .pop-comment-row")).to_be_hidden()
 
@@ -137,7 +140,9 @@ def test_done_and_comment_are_saved(open_page):
     page.reload()
     page.wait_for_selector(".peak-item")
     expect(page.locator("#count")).to_contain_text("1 fait au total")
-    page.locator(".chip", has_text="Fait").first.click()
+    page.click("#settings-open")  # filtres dans le panneau ⚙
+    page.locator("#status-chips .chip", has_text="Fait").click()
+    page.click("#settings-close")
     expect(page.locator(".peak-item .name")).to_have_text([peak["name"]])
     open_peak(page, peak["name"])
     expect(page.locator("#peak-panel .pop-done-checkbox")).to_be_checked()
@@ -231,3 +236,49 @@ def test_admin_views_other_space_read_only(open_page):
     open_peak(page, CATALOG[0]["name"])
     expect(page.locator("#peak-panel .pop-done-checkbox")).to_be_disabled()
     expect(page.locator("#peak-panel .pop-comment-input")).to_have_value("note de bob")
+
+
+def test_settings_panel_and_map_controls(open_page):
+    page = open_page("bob")
+    panel = page.locator("#settings-panel")
+    expect(panel).to_be_hidden()
+    page.click("#settings-open")
+    expect(panel).to_be_visible()
+    expect(page.locator("#account-name")).to_contain_text("bob")
+    for chips in ("#region-chips", "#diff-chips", "#status-chips"):
+        expect(page.locator(f"{chips} .chip").first).to_be_visible()
+    expect(page.locator("#base-layer-options input")).to_have_count(4)
+    # Filtre de difficulté : décocher T2 retire ses sommets de la liste.
+    t2 = sum(1 for p in CATALOG if p["difficulty"] == "T2")
+    page.locator("#diff-chips .chip", has_text="T2").click()
+    expect(page.locator(".peak-item")).to_have_count(len(CATALOG) - t2)
+    # Fond de carte : mémorisé d'un chargement à l'autre.
+    page.locator("#base-layer-options label", has_text="OpenStreetMap").click()
+    page.keyboard.press("Escape")
+    expect(panel).to_be_hidden()
+    page.reload()
+    page.wait_for_selector(".peak-item")
+    page.click("#settings-open")
+    expect(page.locator("#base-layer-options label", has_text="OpenStreetMap").locator("input")).to_be_checked()
+
+
+def test_legend_collapsed_by_default(open_page):
+    page = open_page("bob")
+    toggle = page.locator("#legend .legend-toggle")
+    expect(toggle).to_contain_text("Cotation randonnée")
+    expect(page.locator("#legend .legend-body")).to_be_hidden()
+    toggle.click()
+    expect(page.locator("#legend .legend-body")).to_be_visible()
+    expect(page.locator("#legend .legend-body")).to_contain_text("T4")
+
+
+def test_toolbar_and_eye_button(open_page):
+    page = open_page("bob")
+    for btn in ("#custom-peak-open", "#crampon-view-open", "#settings-open"):
+        expect(page.locator(f"#map-toolbar {btn}")).to_be_visible()
+    eye = page.locator(".separate-all-control a")
+    expect(eye).to_have_attribute("title", "Voir tous les sommets, à leur position réelle")
+    eye.click()
+    expect(eye).to_have_attribute("title", "Regrouper les sommets par zone")
+    eye.click()
+    expect(eye).to_have_attribute("title", "Voir tous les sommets, à leur position réelle")

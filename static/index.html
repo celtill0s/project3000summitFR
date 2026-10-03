@@ -19,45 +19,31 @@
 <!-- Espace de stockage plein ou presque (js/storage.js) -->
 <div id="storage-banner" role="alert" hidden></div>
 <div id="app">
+  <!-- Liste des sommets : panneau en verre dépoli sur toute la hauteur, à gauche, par-dessus la
+       carte (visible en transparence entre les fiches). Filtres et compte : panneau ⚙. -->
   <div id="sidebar">
-    <header>
-      <h1>Sommets de plus de 3000 m</h1>
-      <div class="subtitle">Alpes françaises &amp; Pyrénées &mdash; accessibles à pied, sans matériel d'alpinisme (pas de glacier obligatoire, pas de corde, pas de via ferrata). Cotation randonnée CAS/SAC indicative (T2 à T4).</div>
-      <button type="button" id="crampon-view-open" class="crampon-view-open-btn">❄️ Vue crampons/piolet (POC)</button>
-      <button type="button" id="custom-peak-open" class="crampon-view-open-btn personal-only editable-only">➕ Ajouter un sommet</button>
-      <!-- Compte connecté (js/account.js) -->
-      <div id="account-bar" hidden>
-        <span id="account-name"></span>
-        <button type="button" id="account-password" class="crampon-view-open-btn">🔑 Mot de passe</button>
-        <button type="button" id="admin-open" class="crampon-view-open-btn" hidden>👥 Utilisateurs</button>
-        <button type="button" id="account-logout" class="crampon-view-open-btn">Se déconnecter</button>
-      </div>
-    </header>
     <!-- Admin consultant l'espace d'un autre utilisateur -->
     <div id="space-banner" hidden>👁 Espace de <strong id="space-banner-name"></strong> — lecture seule · <a href="/">Revenir à mon espace</a></div>
-    <div id="controls">
-      <input id="search" type="text" placeholder="Rechercher un sommet, un massif…" />
-      <div class="filter-group">
-        <div class="label">Massif</div>
-        <div class="chips" id="region-chips"></div>
-      </div>
-      <div class="filter-group">
-        <div class="label">Difficulté (cotation randonnée, calques)</div>
-        <div class="chips" id="diff-chips"></div>
-      </div>
-      <div class="filter-group personal-only">
-        <div class="label">Statut</div>
-        <div class="chips" id="status-chips"></div>
-      </div>
-      <div class="filter-group personal-only">
-        <div class="label">Sauvegarde</div>
-        <div style="font-size:11px;color:var(--muted);line-height:1.4;">Coché, commentaires, photos/vidéos et traces GPX sont enregistrés directement sur le serveur — rien à exporter ni à importer.</div>
-      </div>
+    <div id="sidebar-top">
+      <input id="search" type="search" placeholder="Rechercher un sommet, un massif…" aria-label="Rechercher un sommet ou un massif" />
+      <div id="count"></div>
     </div>
-    <div id="count"></div>
     <div id="list"><div id="loading">Chargement de mountains.json…</div></div>
   </div>
   <div id="map">
+    <!-- Barre d'outils en haut à droite : ajouter un sommet, vue crampons + piolet, paramètres -->
+    <div id="map-toolbar">
+      <button type="button" id="custom-peak-open" class="tool-btn personal-only editable-only" title="Ajouter un sommet" aria-label="Ajouter un sommet">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+      </button>
+      <button type="button" id="crampon-view-open" class="tool-btn" title="Sommets accessibles crampons + piolet" aria-label="Vue crampons + piolet">
+        <!-- piolet : manche en diagonale avec sa pointe, tête (pic recourbé d'un côté, panne de l'autre) -->
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21 15.2 7.4" /><path d="M11 4.6 15.2 7.4Q19.4 10.2 20.5 15" /><path d="M9.6 6.5 12.4 2.8" /><path d="m3.6 22.6 1.4-1.6" /></svg>
+      </button>
+      <button type="button" id="settings-open" class="tool-btn" title="Paramètres" aria-label="Paramètres" aria-expanded="false" aria-controls="settings-panel">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
+      </button>
+    </div>
     <div id="peak-panel" hidden>
       <div id="peak-panel-header">
         <span id="peak-panel-drag-hint">&#10021; Déplacer</span>
@@ -75,7 +61,7 @@
       </div>
     </div>
   </div>
-  <button type="button" id="mobile-list-toggle">📋 Liste</button>
+  <button type="button" id="mobile-list-toggle" title="Liste des sommets" aria-label="Liste des sommets">📋</button>
 </div>
 
 <div id="photo-lightbox" hidden>
@@ -91,6 +77,59 @@
      glace, pas de corde) hors de leur fenêtre "randonnée normale", avec le grade alpin quand
      il a pu être confirmé sur camptocamp.org. Données : champ "crampon" des sommets concernés
      dans static/mountains.json. -->
+<!-- Paramètres (bouton ⚙) : compte, filtres d'affichage, carte, présentation -->
+<aside id="settings-panel" hidden aria-labelledby="settings-title">
+  <div id="settings-header">
+    <h2 id="settings-title">Paramètres</h2>
+    <button type="button" id="settings-close" aria-label="Fermer">&#10005;</button>
+  </div>
+  <div id="settings-body">
+    <section class="settings-section">
+      <h3>Compte</h3>
+      <div id="account-bar" hidden>
+        <span id="account-name"></span>
+        <div class="settings-actions">
+          <button type="button" id="account-password" class="btn-secondary">🔑 Mot de passe</button>
+          <button type="button" id="admin-open" class="btn-secondary" hidden>👥 Utilisateurs</button>
+          <button type="button" id="account-logout" class="btn-secondary">Se déconnecter</button>
+        </div>
+      </div>
+    </section>
+    <section class="settings-section">
+      <h3>Sommets affichés</h3>
+      <div class="filter-group">
+        <div class="label">Massif</div>
+        <div class="chips" id="region-chips"></div>
+      </div>
+      <div class="filter-group">
+        <div class="label">Difficulté (cotation randonnée)</div>
+        <div class="chips" id="diff-chips"></div>
+      </div>
+      <div class="filter-group personal-only">
+        <div class="label">Statut</div>
+        <div class="chips" id="status-chips"></div>
+      </div>
+    </section>
+    <section class="settings-section">
+      <h3>Carte</h3>
+      <div class="filter-group">
+        <div class="label">Fond de carte</div>
+        <div id="base-layer-options" class="settings-radios"></div>
+      </div>
+      <div class="filter-group">
+        <div class="label">Calques</div>
+        <label class="settings-check"><input type="checkbox" id="overlay-gpx"> <span class="gpx-swatch"></span> Traces GPX</label>
+        <label class="settings-check"><input type="checkbox" id="overlay-slopes"> Pentes &gt; 30° (IGN)</label>
+      </div>
+    </section>
+    <section class="settings-section settings-about">
+      <h3>À propos</h3>
+      <p><strong>Sommets de plus de 3000 m</strong> — Alpes françaises &amp; Pyrénées, accessibles à pied, sans matériel d'alpinisme (pas de glacier obligatoire, pas de corde, pas de via ferrata). Cotation randonnée CAS/SAC indicative (T2 à T4).</p>
+      <p class="personal-only">Coché, commentaires, photos/vidéos et traces GPX sont enregistrés directement sur le serveur — rien à exporter ni à importer.</p>
+    </section>
+  </div>
+</aside>
+
 <!-- Changement de son propre mot de passe (js/account.js) -->
 <div id="password-dialog" class="modal" hidden>
   <form id="password-form" class="modal-box">

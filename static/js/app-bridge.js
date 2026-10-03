@@ -9,7 +9,7 @@ export const nativeApp = window.SommetsApp || null;
 const CLOSABLES = [
   ['#photo-lightbox:not([hidden])', '#photo-lightbox-close'],
   ['#crampon-view:not([hidden])', '#crampon-view-close'],
-  ['.leaflet-control-layers-expanded', '.leaflet-control-layers-close'],
+  ['#settings-panel:not([hidden])', '#settings-close'],
   ['#peak-panel:not([hidden])', '#peak-panel-close'],
   ['#app.mobile-list-open', '#mobile-list-toggle'],
 ];

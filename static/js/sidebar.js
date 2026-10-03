@@ -2,8 +2,18 @@
 import { escapeHtml } from './util.js';
 import { DIFFS, DIFF_COLORS, REGIONS, STATUSES } from './config.js';
 import { PEAKS, doneSet, passesBaseFilter, session, state } from './store.js';
-import { map, markers, syncMarkers } from './map.js';
+import { flyToVisible, map, markers, syncMarkers } from './map.js';
 import { openPeakPanel, toggleDone } from './panel.js';
+
+// Bouton mobile « liste » : juste l'emoji (📋, ou ✕ quand la liste est ouverte) ; le nombre de
+// sommets affichés reste disponible en infobulle et pour les lecteurs d'écran.
+function setListButton(btn, open, count) {
+  if (!btn) return;
+  btn.textContent = open ? '✕' : '📋';
+  const label = open ? 'Fermer la liste' : `Liste des sommets (${count})`;
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+}
 
 // --- Mobile : carte plein écran, barre latérale en panneau flottant (filtres), liste masquée
 // par défaut et ouverte en plein écran via ce bouton (option "b" retenue). ---
@@ -11,14 +21,14 @@ function closeMobileList() {
   const app = document.getElementById('app');
   app.classList.remove('mobile-list-open');
   const btn = document.getElementById('mobile-list-toggle');
-  if (btn) btn.textContent = `📋 Liste (${PEAKS.filter(passesBaseFilter).length})`;
+  setListButton(btn, false, PEAKS.filter(passesBaseFilter).length);
 }
 
 function toggleMobileList() {
   const app = document.getElementById('app');
   const open = app.classList.toggle('mobile-list-open');
   const btn = document.getElementById('mobile-list-toggle');
-  btn.textContent = open ? '✕ Fermer' : `📋 Liste (${PEAKS.filter(passesBaseFilter).length})`;
+  setListButton(btn, open, PEAKS.filter(passesBaseFilter).length);
 }
 
 function renderChips(containerId, values, activeCheckFn, labelFn, colorFn, onToggle) {
@@ -64,7 +74,7 @@ export function updateDoneCount() {
   el.textContent = session.space === null ? shown : `${shown} · ${doneSet.size} fait${doneSet.size > 1 ? 's' : ''} au total`;
   const toggleBtn = document.getElementById('mobile-list-toggle');
   if (toggleBtn && !document.getElementById('app').classList.contains('mobile-list-open')) {
-    toggleBtn.textContent = `📋 Liste (${visible.length})`;
+    setListButton(toggleBtn, false, visible.length);
   }
 }
 
@@ -106,7 +116,7 @@ export function renderList() {
     item.addEventListener('click', () => {
       const m = markers.get(p.id);
       closeMobileList(); // sur mobile, sélectionner un sommet referme la liste plein écran
-      map.flyTo([p.lat, p.lon], 12, { duration: 0.6 });
+      flyToVisible([p.lat, p.lon], 12, { duration: 0.6 });
       // Attend la fin de l'animation pour positionner correctement le panneau à sa première ouverture
       // (il est en coordonnées écran, pas géographiques, donc pas suivi automatiquement pendant le flyTo).
       map.once('moveend', () => openPeakPanel(p, m.marker));
@@ -126,10 +136,6 @@ export function initSidebar() {
   document.getElementById('search').addEventListener('input', e => {
     state.query = e.target.value.trim();
     syncMarkers();
-    renderList();
-  });
-  map.on('overlayadd overlayremove', () => {
-    renderChipsAll();
     renderList();
   });
 }

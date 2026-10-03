@@ -4,7 +4,7 @@ import { DIFF_COLORS } from './config.js';
 import { PEAKS, session } from './store.js';
 import { apiPost, peakApiBase } from './api.js';
 import { MOUNTAIN_PATH } from './icons.js';
-import { addPeakMarker, map, markers, refreshPeakMarker, syncMarkers } from './map.js';
+import { addPeakMarker, map, markers, refreshPeakMarker, syncMarkers, visibleCenter } from './map.js';
 import { openPeakPanel } from './panel.js';
 import { renderList } from './sidebar.js';
 
@@ -62,7 +62,10 @@ function readCoords() {
 
 function startPlacement(fields, coords) {
   const start = coords || map.getCenter();
-  if (coords) map.setView(coords, Math.max(map.getZoom(), 13));
+  if (coords) {
+    const zoom = Math.max(map.getZoom(), 13);
+    map.setView(visibleCenter(coords, zoom), zoom);
+  }
   const marker = L.marker(start, {
     icon: placementIcon(DIFF_COLORS[fields.difficulty] || '#555'),
     draggable: true,
